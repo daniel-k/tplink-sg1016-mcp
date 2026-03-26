@@ -7,18 +7,41 @@ from typing import Any
 import aiohttp
 
 from .models import (
+    CableDiagResult,
+    CableStatus,
+    DashboardInfo,
     DeviceInfo,
+    DhcpSnoopingConfig,
+    DhcpSnoopingPort,
+    IgmpGroup,
+    IgmpSnoopingConfig,
+    IpSettings,
+    LagConfig,
+    LagGroup,
     PoeClass,
+    PoeExtendConfig,
+    PoeExtendPort,
     PoeGlobalState,
     PoePowerLimit,
     PoePowerStatus,
     PoePriority,
+    PoeRecoveryConfig,
+    PoeRecoveryPort,
+    PortBandwidthLimit,
+    PortIsolationEntry,
+    PortMirrorConfig,
     PortPoeState,
     PortPvid,
+    PortQosPriority,
+    PortRate,
     PortSpeed,
     PortState,
     PortStatistics,
+    PortStormControl,
     PvidConfig,
+    QosConfig,
+    QosMode,
+    QosPriority,
     Vlan,
     VlanConfig,
     VlanPortMembership,
@@ -189,7 +212,16 @@ class SwitchClient:
             self._poe_available = False
         return self._poe_available
 
-    # --- queries ---
+    # --- helpers ---
+
+    @staticmethod
+    def _bitmask_to_ports(mask: int, port_count: int) -> list[int]:
+        """Convert a port bitmask to a list of 1-based port numbers."""
+        return [i + 1 for i in range(port_count) if mask & (1 << i)]
+
+    # ===================================================================
+    # QUERIES
+    # ===================================================================
 
     async def get_device_info(self) -> DeviceInfo:
         page = await self._authed_get("SystemInfoRpm.htm")
@@ -210,6 +242,43 @@ class SwitchClient:
             firmware=val("firmwareStr"),
             hardware=val("hardwareStr"),
         )
+
+    async def get_dashboard(self) -> DashboardInfo:
+        """Get the main dashboard with live port TX/RX rates and uptime."""
+        page = await self._authed_get("MainRpm.htm")
+        data = get_variables(
+            page,
+            [
+                ("info_ds", VarType.DICT),
+                ("port_info", VarType.DICT),
+                ("max_port_num", VarType.INT),
+            ],
+        )
+
+        info_ds = data.get("info_ds") or {}
+        port_info = data.get("port_info") or {}
+        max_ports = data.get("max_port_num") or 0
+
+        work_time = info_ds.get("workTime", ["0"])[0] if info_ds.get("workTime") else "0"
+
+        states = port_info.get("state", [])
+        spd_act = port_info.get("spd_act", [])
+        rx_rates = port_info.get("rx_rate", [])
+        tx_rates = port_info.get("tx_rate", [])
+
+        ports: list[PortRate] = []
+        for i in range(max_ports):
+            ports.append(
+                PortRate(
+                    number=i + 1,
+                    enabled=states[i] == 1 if i < len(states) else False,
+                    link_speed=PortSpeed(spd_act[i]) if i < len(spd_act) else PortSpeed.LINK_DOWN,
+                    tx_rate=tx_rates[i] if i < len(tx_rates) else 0,
+                    rx_rate=rx_rates[i] if i < len(rx_rates) else 0,
+                )
+            )
+
+        return DashboardInfo(uptime=str(work_time), ports=ports)
 
     async def get_port_statistics(self) -> list[PortStatistics]:
         """Get per-port packet statistics."""
@@ -265,6 +334,324 @@ class SwitchClient:
                 )
             )
         return result
+
+    async def get_ip_settings(self) -> IpSettings:
+        """Get the switch's IP configuration."""
+        page = await self._authed_get("IpSettingRpm.htm")
+        data = get_variable(page, "ip_ds", VarType.DICT)
+        if not data:
+            return IpSettings(dhcp_enabled=False, ip="", netmask="", gateway="")
+        return IpSettings(
+            dhcp_enabled=data.get("state", 0) == 1,
+            ip=data.get("ipStr", [""])[0] if data.get("ipStr") else "",
+            netmask=data.get("netmaskStr", [""])[0] if data.get("netmaskStr") else "",
+            gateway=data.get("gatewayStr", [""])[0] if data.get("gatewayStr") else "",
+        )
+
+    async def get_led_status(self) -> bool:
+        """Get whether the switch LEDs are on. Returns True if on."""
+        page = await self._authed_get("TurnOnLEDRpm.htm")
+        led = get_variable(page, "led", VarType.INT)
+        return led == 1
+
+    async def get_cable_diagnostics(self) -> list[CableDiagResult]:
+        """Get cable diagnostics results (run run_cable_test first)."""
+        page = await self._authed_get("CableDiagRpm.htm")
+        data = get_variables(
+            page,
+            [
+                ("maxPort", VarType.INT),
+                ("cablestate", VarType.LIST),
+                ("cablelength", VarType.LIST),
+            ],
+        )
+        max_port = data.get("maxPort") or 0
+        states = data.get("cablestate") or []
+        lengths = data.get("cablelength") or []
+
+        result: list[CableDiagResult] = []
+        for i in range(max_port):
+            raw_status = int(states[i]) if i < len(states) else -1
+            length = int(lengths[i]) if i < len(lengths) else 0
+            result.append(
+                CableDiagResult(
+                    port=i + 1,
+                    status=CableStatus(raw_status),
+                    length_m=length,
+                )
+            )
+        return result
+
+    async def get_igmp_snooping(self) -> IgmpSnoopingConfig:
+        """Get IGMP snooping configuration and multicast group table."""
+        page = await self._authed_get("IgmpSnoopingRpm.htm")
+        data = get_variable(page, "igmp_ds", VarType.DICT)
+        if not data:
+            return IgmpSnoopingConfig(enabled=False, report_suppression=False)
+
+        enabled = data.get("state", 0) == 1
+        suppression = data.get("suppressionState", 0) == 1
+        count = data.get("count", 0)
+
+        groups: list[IgmpGroup] = []
+        ip_list = data.get("ipStr", [])
+        vlan_list = data.get("vlanStr", [])
+        port_list = data.get("portStr", [])
+        for i in range(count):
+            groups.append(
+                IgmpGroup(
+                    ip=ip_list[i] if i < len(ip_list) else "",
+                    vlan=vlan_list[i] if i < len(vlan_list) else "",
+                    ports=port_list[i] if i < len(port_list) else "",
+                )
+            )
+
+        return IgmpSnoopingConfig(enabled=enabled, report_suppression=suppression, groups=groups)
+
+    async def get_lag_config(self) -> LagConfig:
+        """Get link aggregation group (LAG / port trunk) configuration."""
+        page = await self._authed_get("PortTrunkRpm.htm")
+        data = get_variable(page, "trunk_conf", VarType.DICT)
+        if not data:
+            return LagConfig(max_groups=0, port_count=0)
+
+        max_groups = data.get("maxTrunkNum", 8)
+        port_count = data.get("portNum", 0)
+
+        groups: list[LagGroup] = []
+        for g in range(1, max_groups + 1):
+            port_str = data.get(f"portStr_g{g}", [])
+            ports = [int(p) for p in port_str if int(p) > 0] if port_str else []
+            if ports:
+                groups.append(LagGroup(group_id=g, ports=ports))
+
+        return LagConfig(max_groups=max_groups, port_count=port_count, groups=groups)
+
+    async def get_port_mirror_config(self) -> PortMirrorConfig:
+        """Get port mirroring configuration."""
+        page = await self._authed_get("PortMirrorRpm.htm")
+        data = get_variables(
+            page,
+            [
+                ("MirrEn", VarType.INT),
+                ("MirrPort", VarType.INT),
+                ("mirr_info", VarType.DICT),
+                ("max_port_num", VarType.INT),
+            ],
+        )
+
+        enabled = data.get("MirrEn", 0) == 1
+        dest_port = data.get("MirrPort", 0)
+        max_ports = data.get("max_port_num", 0)
+        mirr_info = data.get("mirr_info") or {}
+
+        ingress = mirr_info.get("ingress", [])
+        egress = mirr_info.get("egress", [])
+
+        ingress_ports = [i + 1 for i in range(min(max_ports, len(ingress))) if ingress[i] == 1]
+        egress_ports = [i + 1 for i in range(min(max_ports, len(egress))) if egress[i] == 1]
+
+        return PortMirrorConfig(
+            enabled=enabled,
+            destination_port=dest_port,
+            ingress_ports=ingress_ports,
+            egress_ports=egress_ports,
+        )
+
+    async def get_loop_prevention(self) -> bool:
+        """Get loop prevention status. Returns True if enabled."""
+        page = await self._authed_get("LoopPreventionRpm.htm")
+        return get_variable(page, "lpEn", VarType.INT) == 1
+
+    async def get_qos_config(self) -> QosConfig:
+        """Get QoS mode and per-port priority settings."""
+        page = await self._authed_get("QosBasicRpm.htm")
+        data = get_variables(
+            page,
+            [
+                ("qosMode", VarType.INT),
+                ("pPri", VarType.LIST),
+                ("portNumber", VarType.INT),
+            ],
+        )
+
+        mode = QosMode(data.get("qosMode", 0))
+        port_count = data.get("portNumber", 0)
+        pri_list = data.get("pPri") or []
+
+        priorities: list[PortQosPriority] = []
+        for i in range(port_count):
+            raw = int(pri_list[i]) if i < len(pri_list) else 0
+            priorities.append(PortQosPriority(port=i + 1, priority=QosPriority(raw)))
+
+        return QosConfig(mode=mode, port_priorities=priorities)
+
+    async def get_bandwidth_limits(self) -> list[PortBandwidthLimit]:
+        """Get per-port bandwidth rate limiting configuration."""
+        page = await self._authed_get("QosBandWidthControlRpm.htm")
+        data = get_variables(
+            page,
+            [("bcInfo", VarType.LIST), ("portNumber", VarType.INT)],
+        )
+
+        port_count = data.get("portNumber", 0)
+        bc_info = data.get("bcInfo") or []
+
+        result: list[PortBandwidthLimit] = []
+        for i in range(port_count):
+            base = i * 3
+            ingress = int(bc_info[base]) if base < len(bc_info) else 0
+            egress = int(bc_info[base + 1]) if base + 1 < len(bc_info) else 0
+            result.append(PortBandwidthLimit(port=i + 1, ingress_rate=ingress, egress_rate=egress))
+        return result
+
+    async def get_storm_control(self) -> list[PortStormControl]:
+        """Get per-port storm control configuration."""
+        page = await self._authed_get("QosStormControlRpm.htm")
+        data = get_variables(
+            page,
+            [("scInfo", VarType.LIST), ("portNumber", VarType.INT)],
+        )
+
+        port_count = data.get("portNumber", 0)
+        sc_info = data.get("scInfo") or []
+
+        result: list[PortStormControl] = []
+        for i in range(port_count):
+            base = i * 3
+            rate = int(sc_info[base]) if base < len(sc_info) else 0
+            type_mask = int(sc_info[base + 1]) if base + 1 < len(sc_info) else 0
+            result.append(
+                PortStormControl(
+                    port=i + 1,
+                    rate=rate,
+                    unknown_unicast=bool(type_mask & 1),
+                    multicast=bool(type_mask & 2),
+                    broadcast=bool(type_mask & 4),
+                )
+            )
+        return result
+
+    async def get_poe_recovery(self) -> PoeRecoveryConfig:
+        """Get PoE auto-recovery (ping watchdog) configuration."""
+        if not await self.is_poe_available():
+            return PoeRecoveryConfig(enabled=False)
+
+        page = await self._authed_get("poeRecoveryRpm.htm")
+        data = get_variables(
+            page,
+            [
+                ("globalRecoveryConfig", VarType.DICT),
+                ("portRecoveryConfig", VarType.DICT),
+                ("poe_port_num", VarType.INT),
+            ],
+        )
+
+        global_cfg = data.get("globalRecoveryConfig") or {}
+        port_cfg = data.get("portRecoveryConfig") or {}
+        num_ports = data.get("poe_port_num") or 0
+        enabled = global_cfg.get("global_status", 0) == 1
+
+        ports: list[PoeRecoveryPort] = []
+        ips = port_cfg.get("ip", [])
+        startups = port_cfg.get("startup", [])
+        intervals = port_cfg.get("interval", [])
+        retries = port_cfg.get("retry", [])
+        reboots = port_cfg.get("reboot", [])
+        failures = port_cfg.get("failure", [])
+        totals = port_cfg.get("total", [])
+        statuses = port_cfg.get("status", [])
+
+        for i in range(num_ports):
+            ports.append(
+                PoeRecoveryPort(
+                    port=i + 1,
+                    ip=ips[i] if i < len(ips) else "",
+                    startup_interval=startups[i] if i < len(startups) else 0,
+                    ping_interval=intervals[i] if i < len(intervals) else 0,
+                    max_retries=retries[i] if i < len(retries) else 0,
+                    reboot_count=reboots[i] if i < len(reboots) else 0,
+                    failure_count=failures[i] if i < len(failures) else 0,
+                    total_restarts=totals[i] if i < len(totals) else 0,
+                    status=statuses[i] if i < len(statuses) else 0,
+                )
+            )
+
+        return PoeRecoveryConfig(enabled=enabled, ports=ports)
+
+    async def get_poe_extend(self) -> PoeExtendConfig:
+        """Get PoE extend mode status per port."""
+        if not await self.is_poe_available():
+            return PoeExtendConfig()
+
+        page = await self._authed_get("poeExtendRpm.htm")
+        data = get_variables(
+            page,
+            [("poeExtendConfig", VarType.DICT), ("poe_port_num", VarType.INT)],
+        )
+
+        ext_cfg = data.get("poeExtendConfig") or {}
+        num_ports = data.get("poe_port_num") or 0
+        statuses = ext_cfg.get("status", [])
+
+        ports: list[PoeExtendPort] = []
+        for i in range(num_ports):
+            ports.append(
+                PoeExtendPort(
+                    port=i + 1,
+                    enabled=statuses[i] == 1 if i < len(statuses) else False,
+                )
+            )
+        return PoeExtendConfig(ports=ports)
+
+    async def get_dhcp_snooping(self) -> DhcpSnoopingConfig:
+        """Get DHCP snooping configuration."""
+        page = await self._authed_get("DhcpSnoopingRpm.htm")
+        data = get_variable(page, "dhcp_ds", VarType.DICT)
+        if not data:
+            return DhcpSnoopingConfig(enabled=False)
+
+        enabled = data.get("state", 0) == 1
+        trust_list = data.get("trust", [])
+
+        ports: list[DhcpSnoopingPort] = []
+        for i, trusted in enumerate(trust_list):
+            ports.append(DhcpSnoopingPort(port=i + 1, trusted=trusted == 1))
+
+        return DhcpSnoopingConfig(enabled=enabled, ports=ports)
+
+    async def get_port_isolation(self) -> list[PortIsolationEntry]:
+        """Get port isolation / forwarding restrictions."""
+        page = await self._authed_get("PortIsolationRpm.htm")
+        data = get_variable(page, "portIso_conf", VarType.DICT)
+        if not data:
+            return []
+
+        port_iso = data.get("port_iso", [])
+        port_count = len(port_iso)
+
+        result: list[PortIsolationEntry] = []
+        for i in range(port_count):
+            mask = port_iso[i]
+            result.append(
+                PortIsolationEntry(
+                    port=i + 1,
+                    forwarding_ports=self._bitmask_to_ports(mask, port_count),
+                )
+            )
+        return result
+
+    async def search_mac_table(self, mac_address: str) -> list[dict[str, Any]]:
+        """Search the MAC address table for a specific MAC."""
+        page = await self._authed_get(
+            f"mac_address_search.cgi?txt_macAddress_search={mac_address}&apply=Search"
+        )
+        data = get_variable(page, "mac_ds", VarType.DICT)
+        if not data:
+            return []
+        return data.get("mac_info", [])
+
+    # --- PoE queries ---
 
     async def get_poe_port_states(self) -> list[PortPoeState]:
         if not await self.is_poe_available():
@@ -323,11 +710,6 @@ class SwitchClient:
 
     # --- VLAN queries ---
 
-    @staticmethod
-    def _bitmask_to_ports(mask: int, port_count: int) -> list[int]:
-        """Convert a port bitmask to a list of 1-based port numbers."""
-        return [i + 1 for i in range(port_count) if mask & (1 << i)]
-
     async def get_vlan_config(self) -> VlanConfig:
         """Get the 802.1Q VLAN configuration."""
         page = await self._authed_get("Vlan8021QRpm.htm")
@@ -381,7 +763,11 @@ class SwitchClient:
 
         return PvidConfig(enabled=enabled, port_count=port_count, pvids=pvids)
 
-    # --- mutations ---
+    # ===================================================================
+    # MUTATIONS
+    # ===================================================================
+
+    # --- VLAN ---
 
     async def set_vlan_enabled(self, *, enabled: bool) -> None:
         """Enable or disable 802.1Q VLAN mode."""
@@ -394,14 +780,7 @@ class SwitchClient:
         name: str,
         port_memberships: dict[int, VlanPortMembership],
     ) -> None:
-        """Create or modify an 802.1Q VLAN.
-
-        Args:
-            vid: VLAN ID (1-4094).
-            name: VLAN name (alphanumeric, max 10 chars).
-            port_memberships: Mapping of port number to membership type.
-                Ports not in the dict default to NOT_MEMBER.
-        """
+        """Create or modify an 802.1Q VLAN."""
         if not (1 <= vid <= 4094):
             raise SwitchError("VLAN ID must be between 1 and 4094")
         if len(name) > 10:
@@ -440,6 +819,8 @@ class SwitchClient:
         query = f"pbm={pbm}&pvid={pvid}"
         await self._authed_get(f"vlanPvidSet.cgi?{query}")
 
+    # --- Port state ---
+
     async def set_port_state(
         self,
         port: int,
@@ -453,6 +834,8 @@ class SwitchClient:
             f"&speed={speed.value}&flowcontrol={1 if flow_control else 0}&apply=Apply"
         )
         await self._authed_get(f"port_setting.cgi?{query}")
+
+    # --- PoE ---
 
     async def set_poe_limit(self, limit: float) -> None:
         if not await self.is_poe_available():
@@ -525,3 +908,195 @@ class SwitchClient:
                 "applay": "Apply",
             },
         )
+
+    async def repower_poe_port(self, port: int) -> None:
+        """Re-power (restart) a PoE port without changing its configuration."""
+        if not await self.is_poe_available():
+            raise SwitchError("PoE is not available on this device")
+        await self._authed_post("main_poe_port_reset.cgi", {f"reset_{port}": "Re-power"})
+
+    # --- LED ---
+
+    async def set_led(self, *, on: bool) -> None:
+        """Turn switch LEDs on or off."""
+        query = f"rd_led={1 if on else 0}&led_cfg=Apply"
+        await self._authed_get(f"led_on_set.cgi?{query}")
+
+    # --- Cable diagnostics ---
+
+    async def run_cable_test(self, ports: list[int]) -> None:
+        """Trigger cable diagnostics on the specified ports."""
+        params = [f"chk_{p}={p}" for p in ports]
+        params.append("Apply=Apply")
+        await self._authed_get(f"cable_diag_get.cgi?{'&'.join(params)}")
+
+    # --- Loop prevention ---
+
+    async def set_loop_prevention(self, *, enabled: bool) -> None:
+        query = f"lpEn={1 if enabled else 0}&apply=Apply"
+        await self._authed_get(f"loop_prevention_set.cgi?{query}")
+
+    # --- IGMP snooping ---
+
+    async def set_igmp_snooping(self, *, enabled: bool, report_suppression: bool = False) -> None:
+        query = (
+            f"igmp_mode={1 if enabled else 0}"
+            f"&reportSu_mode={1 if report_suppression else 0}&Apply=Apply"
+        )
+        await self._authed_get(f"igmpSnooping.cgi?{query}")
+
+    # --- QoS ---
+
+    async def set_qos_mode(self, mode: QosMode) -> None:
+        await self._authed_post(
+            "qos_mode_set.cgi",
+            {"rd_qosmode": mode.value, "qosmode": "Apply"},
+        )
+
+    async def set_port_qos_priority(self, port: int, priority: QosPriority) -> None:
+        await self._authed_post(
+            "qos_port_priority_set.cgi",
+            {f"sel_{port}": 1, "port_queue": priority.value, "apply": "Apply"},
+        )
+
+    async def set_bandwidth_limit(self, port: int, *, ingress_rate: int, egress_rate: int) -> None:
+        await self._authed_post(
+            "qos_bandwidth_set.cgi",
+            {
+                f"sel_{port}": 1,
+                "igrRate": ingress_rate,
+                "egrRate": egress_rate,
+                "applay": "Apply",
+            },
+        )
+
+    async def set_storm_control(
+        self,
+        port: int,
+        *,
+        enabled: bool,
+        rate: int,
+        broadcast: bool = True,
+        multicast: bool = False,
+        unknown_unicast: bool = False,
+    ) -> None:
+        type_mask = 0
+        if unknown_unicast:
+            type_mask |= 1
+        if multicast:
+            type_mask |= 2
+        if broadcast:
+            type_mask |= 4
+        await self._authed_post(
+            "qos_storm_set.cgi",
+            {
+                f"sel_{port}": 1,
+                "rate": rate,
+                "stormType": type_mask,
+                "state": 1 if enabled else 0,
+                "applay": "Apply",
+            },
+        )
+
+    # --- Port mirroring ---
+
+    async def set_port_mirror(
+        self,
+        *,
+        enabled: bool,
+        destination_port: int = 1,
+        ingress_ports: list[int] | None = None,
+        egress_ports: list[int] | None = None,
+    ) -> None:
+        """Configure port mirroring: enable/disable and set destination."""
+        await self._authed_get(
+            f"mirror_enabled_set.cgi?state={1 if enabled else 0}"
+            f"&mirroringport={destination_port}&mirrorenable=Apply"
+        )
+        if enabled and (ingress_ports or egress_ports):
+            for port in ingress_ports or []:
+                await self._authed_get(
+                    f"mirrored_port_set.cgi?mirroredport={port}"
+                    f"&ingressState=1&egressState=0&mirrored_submit=Apply"
+                )
+            for port in egress_ports or []:
+                await self._authed_get(
+                    f"mirrored_port_set.cgi?mirroredport={port}"
+                    f"&ingressState=0&egressState=1&mirrored_submit=Apply"
+                )
+            # ports in both lists: set both directions
+            both = set(ingress_ports or []) & set(egress_ports or [])
+            for port in both:
+                await self._authed_get(
+                    f"mirrored_port_set.cgi?mirroredport={port}"
+                    f"&ingressState=1&egressState=1&mirrored_submit=Apply"
+                )
+
+    # --- Port isolation ---
+
+    async def set_port_isolation(self, port: int, forwarding_ports: list[int]) -> None:
+        """Set which ports a given port is allowed to forward to."""
+        params = [f"groupId={port}"]
+        for p in forwarding_ports:
+            params.append(f"portid={p}")
+        params.append("setapply=Apply")
+        await self._authed_get(f"port_isolation_set.cgi?{'&'.join(params)}")
+
+    # --- LAG ---
+
+    async def create_lag(self, group_id: int, ports: list[int]) -> None:
+        """Create or modify a link aggregation group."""
+        if not (1 <= group_id <= 8):
+            raise SwitchError("LAG group ID must be between 1 and 8")
+        params = [f"groupId={group_id}"]
+        for p in ports:
+            params.append(f"portid={p}")
+        params.append("setapply=Apply")
+        await self._authed_get(f"port_trunk_set.cgi?{'&'.join(params)}")
+
+    async def delete_lag(self, group_id: int) -> None:
+        """Delete a link aggregation group."""
+        query = f"chk_trunk={group_id}&setDelete=Delete"
+        await self._authed_get(f"port_trunk_display.cgi?{query}")
+
+    # --- DHCP snooping ---
+
+    async def set_dhcp_snooping_enabled(self, *, enabled: bool) -> None:
+        query = f"dhcp_mode={1 if enabled else 0}&Apply=Apply"
+        await self._authed_get(f"dhcp_enable_set.cgi?{query}")
+
+    async def set_dhcp_snooping_port(self, port: int, *, trusted: bool) -> None:
+        query = (
+            f"dhcpport={port}&trustPort={1 if trusted else 0}"
+            f"&option82=0&operation=0&dhcp_submit=Apply"
+        )
+        await self._authed_get(f"dhcp_port_set.cgi?{query}")
+
+    # --- System ---
+
+    async def reboot(self) -> None:
+        """Reboot the switch."""
+        await self._authed_post(
+            "reboot.cgi",
+            {"reboot_op": "reboot", "save_op": "true", "apply": "Reboot"},
+        )
+
+    async def set_ip_settings(
+        self,
+        *,
+        dhcp: bool,
+        ip: str = "",
+        netmask: str = "",
+        gateway: str = "",
+    ) -> None:
+        """Change the switch's IP configuration."""
+        query = (
+            f"dhcpSetting={'enable' if dhcp else 'disable'}"
+            f"&ip_address={ip}&ip_netmask={netmask}&ip_gateway={gateway}"
+            f"&submit=Apply"
+        )
+        await self._authed_get(f"ip_setting.cgi?{query}")
+
+    async def set_device_name(self, name: str) -> None:
+        """Set the switch's system name/description."""
+        await self._authed_get(f"system_name_set.cgi?sysName={name}")

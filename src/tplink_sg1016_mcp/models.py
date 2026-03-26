@@ -50,6 +50,29 @@ class PoePowerStatus(IntEnum):
     OVERTEMPERATURE = 9
 
 
+class CableStatus(IntEnum):
+    NOT_TESTED = -1
+    NO_CABLE = 0
+    NORMAL = 1
+    OPEN = 2
+    SHORT = 3
+    OPEN_SHORT = 4
+    CROSSTALK = 5
+
+
+class QosMode(IntEnum):
+    PORT_BASED = 0
+    DOT1P_BASED = 1
+    DSCP_BASED = 2
+
+
+class QosPriority(IntEnum):
+    LOWEST = 0
+    NORMAL = 1
+    MEDIUM = 2
+    HIGHEST = 3
+
+
 @dataclass
 class DeviceInfo:
     name: str | None = None
@@ -93,7 +116,7 @@ class PoeGlobalState:
     power_remain: float
 
 
-# --- Port statistics models ---
+# --- Port statistics ---
 
 
 @dataclass
@@ -105,6 +128,186 @@ class PortStatistics:
     tx_bad_packets: int
     rx_good_packets: int
     rx_bad_packets: int
+
+
+# --- Live port rates (MainRpm) ---
+
+
+@dataclass
+class PortRate:
+    number: int
+    enabled: bool
+    link_speed: PortSpeed
+    tx_rate: int
+    rx_rate: int
+
+
+@dataclass
+class DashboardInfo:
+    uptime: str
+    ports: list[PortRate] = field(default_factory=list)
+
+
+# --- IP settings ---
+
+
+@dataclass
+class IpSettings:
+    dhcp_enabled: bool
+    ip: str
+    netmask: str
+    gateway: str
+
+
+# --- Cable diagnostics ---
+
+
+@dataclass
+class CableDiagResult:
+    port: int
+    status: CableStatus
+    length_m: int
+
+
+# --- IGMP snooping ---
+
+
+@dataclass
+class IgmpGroup:
+    ip: str
+    vlan: str
+    ports: str
+
+
+@dataclass
+class IgmpSnoopingConfig:
+    enabled: bool
+    report_suppression: bool
+    groups: list[IgmpGroup] = field(default_factory=list)
+
+
+# --- LAG (port trunk) ---
+
+
+@dataclass
+class LagGroup:
+    group_id: int
+    ports: list[int] = field(default_factory=list)
+
+
+@dataclass
+class LagConfig:
+    max_groups: int
+    port_count: int
+    groups: list[LagGroup] = field(default_factory=list)
+
+
+# --- Port mirroring ---
+
+
+@dataclass
+class PortMirrorConfig:
+    enabled: bool
+    destination_port: int
+    ingress_ports: list[int] = field(default_factory=list)
+    egress_ports: list[int] = field(default_factory=list)
+
+
+# --- QoS ---
+
+
+@dataclass
+class PortQosPriority:
+    port: int
+    priority: QosPriority
+
+
+@dataclass
+class QosConfig:
+    mode: QosMode
+    port_priorities: list[PortQosPriority] = field(default_factory=list)
+
+
+# --- Bandwidth control ---
+
+
+@dataclass
+class PortBandwidthLimit:
+    port: int
+    ingress_rate: int
+    egress_rate: int
+
+
+# --- Storm control ---
+
+
+@dataclass
+class PortStormControl:
+    port: int
+    broadcast: bool
+    multicast: bool
+    unknown_unicast: bool
+    rate: int
+
+
+# --- PoE recovery ---
+
+
+@dataclass
+class PoeRecoveryPort:
+    port: int
+    ip: str
+    startup_interval: int
+    ping_interval: int
+    max_retries: int
+    reboot_count: int
+    failure_count: int
+    total_restarts: int
+    status: int
+
+
+@dataclass
+class PoeRecoveryConfig:
+    enabled: bool
+    ports: list[PoeRecoveryPort] = field(default_factory=list)
+
+
+# --- PoE extend ---
+
+
+@dataclass
+class PoeExtendPort:
+    port: int
+    enabled: bool
+
+
+@dataclass
+class PoeExtendConfig:
+    ports: list[PoeExtendPort] = field(default_factory=list)
+
+
+# --- DHCP snooping ---
+
+
+@dataclass
+class DhcpSnoopingPort:
+    port: int
+    trusted: bool
+
+
+@dataclass
+class DhcpSnoopingConfig:
+    enabled: bool
+    ports: list[DhcpSnoopingPort] = field(default_factory=list)
+
+
+# --- Port isolation ---
+
+
+@dataclass
+class PortIsolationEntry:
+    port: int
+    forwarding_ports: list[int] = field(default_factory=list)
 
 
 # --- VLAN models ---
