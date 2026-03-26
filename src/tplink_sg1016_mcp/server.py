@@ -1,6 +1,7 @@
 """FastMCP server exposing the TP-Link SG1016PE switch API as tools."""
 
 import dataclasses
+import enum
 import os
 from typing import Any
 
@@ -44,7 +45,9 @@ def _get_client() -> SwitchClient:
 def _to_dict(obj: Any) -> Any:
     """Convert dataclass instances (and lists thereof) to plain dicts."""
     if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
-        return {k: _to_dict(v) for k, v in dataclasses.asdict(obj).items()}
+        return {f.name: _to_dict(getattr(obj, f.name)) for f in dataclasses.fields(obj)}
+    if isinstance(obj, enum.Enum):
+        return obj.name
     if isinstance(obj, list):
         return [_to_dict(item) for item in obj]
     return obj
@@ -64,6 +67,17 @@ async def get_port_states() -> list[dict[str, Any]]:
     client = _get_client()
     states = await client.get_port_states()
     return _to_dict(states)
+
+
+@mcp.tool()
+async def get_port_statistics() -> list[dict[str, Any]]:
+    """Get per-port packet statistics (TX/RX good/bad packet counts, link status).
+
+    Counters are cumulative since last switch reboot and wrap at 2^32.
+    """
+    client = _get_client()
+    stats = await client.get_port_statistics()
+    return _to_dict(stats)
 
 
 @mcp.tool()

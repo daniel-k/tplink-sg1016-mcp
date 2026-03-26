@@ -93,6 +93,20 @@ class PoeGlobalState:
     power_remain: float
 
 
+# --- Port statistics models ---
+
+
+@dataclass
+class PortStatistics:
+    number: int
+    enabled: bool
+    link_status: PortSpeed
+    tx_good_packets: int
+    tx_bad_packets: int
+    rx_good_packets: int
+    rx_bad_packets: int
+
+
 # --- VLAN models ---
 
 

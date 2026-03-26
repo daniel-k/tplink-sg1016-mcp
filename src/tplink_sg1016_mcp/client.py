@@ -17,6 +17,7 @@ from .models import (
     PortPvid,
     PortSpeed,
     PortState,
+    PortStatistics,
     PvidConfig,
     Vlan,
     VlanConfig,
@@ -209,6 +210,38 @@ class SwitchClient:
             firmware=val("firmwareStr"),
             hardware=val("hardwareStr"),
         )
+
+    async def get_port_statistics(self) -> list[PortStatistics]:
+        """Get per-port packet statistics."""
+        page = await self._authed_get("PortStatisticsRpm.htm")
+        data = get_variables(page, [("all_info", VarType.DICT), ("max_port_num", VarType.INT)])
+
+        all_info = data.get("all_info")
+        max_ports = data.get("max_port_num")
+        if not all_info or not max_ports:
+            return []
+
+        states = all_info.get("state", [])
+        link_statuses = all_info.get("link_status", [])
+        pkts = all_info.get("pkts", [])
+
+        result: list[PortStatistics] = []
+        for i in range(max_ports):
+            base = i * 4
+            result.append(
+                PortStatistics(
+                    number=i + 1,
+                    enabled=states[i] == 1 if i < len(states) else False,
+                    link_status=PortSpeed(link_statuses[i])
+                    if i < len(link_statuses)
+                    else PortSpeed.LINK_DOWN,
+                    tx_good_packets=pkts[base] if base < len(pkts) else 0,
+                    tx_bad_packets=pkts[base + 1] if base + 1 < len(pkts) else 0,
+                    rx_good_packets=pkts[base + 2] if base + 2 < len(pkts) else 0,
+                    rx_bad_packets=pkts[base + 3] if base + 3 < len(pkts) else 0,
+                )
+            )
+        return result
 
     async def get_port_states(self) -> list[PortState]:
         page = await self._authed_get("PortSettingRpm.htm")
