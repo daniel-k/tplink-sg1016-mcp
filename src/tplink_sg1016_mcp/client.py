@@ -20,6 +20,7 @@ from .models import (
     PvidConfig,
     Vlan,
     VlanConfig,
+    VlanPortMembership,
 )
 from .parsing import VarType, get_variable, get_variables
 
@@ -348,6 +349,63 @@ class SwitchClient:
         return PvidConfig(enabled=enabled, port_count=port_count, pvids=pvids)
 
     # --- mutations ---
+
+    async def set_vlan_enabled(self, *, enabled: bool) -> None:
+        """Enable or disable 802.1Q VLAN mode."""
+        query = f"qvlan_en={1 if enabled else 0}&qvlan_mode=Apply"
+        await self._authed_get(f"qvlanSet.cgi?{query}")
+
+    async def create_or_update_vlan(
+        self,
+        vid: int,
+        name: str,
+        port_memberships: dict[int, VlanPortMembership],
+    ) -> None:
+        """Create or modify an 802.1Q VLAN.
+
+        Args:
+            vid: VLAN ID (1-4094).
+            name: VLAN name (alphanumeric, max 10 chars).
+            port_memberships: Mapping of port number to membership type.
+                Ports not in the dict default to NOT_MEMBER.
+        """
+        if not (1 <= vid <= 4094):
+            raise SwitchError("VLAN ID must be between 1 and 4094")
+        if len(name) > 10:
+            raise SwitchError("VLAN name must be 10 characters or fewer")
+
+        config = await self.get_vlan_config()
+        if not config.enabled:
+            raise SwitchError("802.1Q VLAN is not enabled")
+
+        membership_to_wire = {
+            VlanPortMembership.UNTAGGED: 0,
+            VlanPortMembership.TAGGED: 1,
+            VlanPortMembership.NOT_MEMBER: 2,
+        }
+
+        params = [f"vid={vid}", f"vname={name}"]
+        for port in range(1, config.port_count + 1):
+            membership = port_memberships.get(port, VlanPortMembership.NOT_MEMBER)
+            params.append(f"selType_{port}={membership_to_wire[membership]}")
+        params.append("qvlan_add=Add%2FModify")
+
+        await self._authed_get(f"qvlanSet.cgi?{'&'.join(params)}")
+
+    async def delete_vlan(self, vid: int) -> None:
+        """Delete an 802.1Q VLAN."""
+        if vid == 1:
+            raise SwitchError("Cannot delete the default VLAN (ID 1)")
+        query = f"selVlans={vid}&qvlan_del=Delete"
+        await self._authed_get(f"qvlanSet.cgi?{query}")
+
+    async def set_port_pvid(self, port: int, pvid: int) -> None:
+        """Set the PVID (default VLAN) for a port."""
+        if port < 1:
+            raise SwitchError("Port number must be >= 1")
+        pbm = 1 << (port - 1)
+        query = f"pbm={pbm}&pvid={pvid}"
+        await self._authed_get(f"vlanPvidSet.cgi?{query}")
 
     async def set_port_state(
         self,

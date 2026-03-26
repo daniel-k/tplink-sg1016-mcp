@@ -7,7 +7,7 @@ from typing import Any
 from fastmcp import FastMCP
 
 from .client import SwitchClient, SwitchError
-from .models import PoePowerLimit, PoePriority, PortSpeed
+from .models import PoePowerLimit, PoePriority, PortSpeed, VlanPortMembership
 
 mcp = FastMCP(
     "TP-Link SG1016PE",
@@ -106,6 +106,86 @@ async def get_pvid_config() -> dict[str, Any]:
     client = _get_client()
     config = await client.get_pvid_config()
     return _to_dict(config)
+
+
+@mcp.tool()
+async def set_vlan_enabled(enabled: bool) -> str:
+    """Enable or disable 802.1Q VLAN mode on the switch.
+
+    Args:
+        enabled: True to enable, False to disable.
+    """
+    client = _get_client()
+    try:
+        await client.set_vlan_enabled(enabled=enabled)
+    except SwitchError as e:
+        return f"Error: {e}"
+    return f"802.1Q VLAN {'enabled' if enabled else 'disabled'}"
+
+
+@mcp.tool()
+async def create_or_update_vlan(
+    vid: int,
+    name: str,
+    tagged_ports: list[int] | None = None,
+    untagged_ports: list[int] | None = None,
+) -> str:
+    """Create or modify an 802.1Q VLAN.
+
+    Ports not listed in tagged_ports or untagged_ports become non-members.
+
+    Args:
+        vid: VLAN ID (1-4094).
+        name: VLAN name (alphanumeric, max 10 chars).
+        tagged_ports: List of port numbers that should be tagged members.
+        untagged_ports: List of port numbers that should be untagged members.
+    """
+    client = _get_client()
+    memberships: dict[int, VlanPortMembership] = {}
+    for p in tagged_ports or []:
+        memberships[p] = VlanPortMembership.TAGGED
+    for p in untagged_ports or []:
+        if p in memberships:
+            return f"Error: port {p} listed in both tagged and untagged"
+        memberships[p] = VlanPortMembership.UNTAGGED
+    try:
+        await client.create_or_update_vlan(vid, name, memberships)
+    except SwitchError as e:
+        return f"Error: {e}"
+    return f"VLAN {vid} ('{name}') created/updated"
+
+
+@mcp.tool()
+async def delete_vlan(vid: int) -> str:
+    """Delete an 802.1Q VLAN.
+
+    Args:
+        vid: VLAN ID to delete. VLAN 1 (Default) cannot be deleted.
+    """
+    client = _get_client()
+    try:
+        await client.delete_vlan(vid)
+    except SwitchError as e:
+        return f"Error: {e}"
+    return f"VLAN {vid} deleted"
+
+
+@mcp.tool()
+async def set_port_pvid(port: int, pvid: int) -> str:
+    """Set the PVID (default VLAN) for a port.
+
+    Incoming untagged frames on this port will be assigned to this VLAN.
+
+    Args:
+        port: Port number (1-based).
+        pvid: VLAN ID to assign as the port's default.
+    """
+    client = _get_client()
+    try:
+        await client.set_port_pvid(port, pvid)
+    except SwitchError as e:
+        return f"Error: {e}"
+    return f"Port {port} PVID set to {pvid}"
 
 
 @mcp.tool()
