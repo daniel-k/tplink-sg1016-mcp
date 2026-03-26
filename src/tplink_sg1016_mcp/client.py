@@ -142,7 +142,12 @@ class SwitchClient:
 
         page = await self._post(
             "logon.cgi",
-            {"username": self._username, "password": self._password, "logon": "Login"},
+            {
+                "username": self._username,
+                "password": self._password,
+                "cpassword": "",
+                "logon": "Login",
+            },
         )
         info = get_variable(page, "logonInfo", VarType.LIST)
         if info is None:
@@ -290,6 +295,8 @@ class SwitchClient:
         if not all_info or not max_ports:
             return []
 
+        # All arrays have 2 trailing zero-padding elements beyond max_port_num.
+        # pkts has 4 values per port (stride 4), so 8 trailing zeros.
         states = all_info.get("state", [])
         link_statuses = all_info.get("link_status", [])
         pkts = all_info.get("pkts", [])
@@ -665,6 +672,8 @@ class SwitchClient:
         if not port_config or not num_ports:
             return []
 
+        # Firmware quirk: PoE read uses 1=enabled, but write uses 2=enabled/1=disabled.
+        # Priority read uses 0=HIGH/1=MIDDLE/2=LOW, write uses 1=HIGH/2=MIDDLE/3=LOW.
         result: list[PortPoeState] = []
         for i in range(num_ports):
             raw_limit = port_config["powerlimit"][i]
@@ -783,8 +792,10 @@ class SwitchClient:
         """Create or modify an 802.1Q VLAN."""
         if not (1 <= vid <= 4094):
             raise SwitchError("VLAN ID must be between 1 and 4094")
-        if len(name) > 10:
-            raise SwitchError("VLAN name must be 10 characters or fewer")
+        # Firmware only accepts alphanumeric VLAN names, max 10 chars
+        name = "".join(c for c in name if c.isalnum())[:10]
+        if not name:
+            raise SwitchError("VLAN name must contain at least one alphanumeric character")
 
         config = await self.get_vlan_config()
         if not config.enabled:
@@ -879,7 +890,9 @@ class SwitchClient:
         if port > poe_port_num:
             raise SwitchError(f"Port number must be <= {poe_port_num}")
 
+        # Write API uses inverted convention: 2=enable, 1=disable (read uses 1=enabled)
         pstate = 2 if enabled else 1
+        # Write priority: 1=HIGH, 2=MIDDLE, 3=LOW (read uses 0/1/2)
         ppriority = _POE_PRIORITY_TO_WIRE.get(priority)
         if ppriority is None:
             raise SwitchError(f"Invalid PoE priority: {priority}")

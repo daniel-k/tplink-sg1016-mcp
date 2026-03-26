@@ -20,10 +20,11 @@ from .models import (
 mcp = FastMCP(
     "TP-Link SG1016PE",
     instructions=(
-        "MCP server for managing a TP-Link SG1016PE Easy Smart switch. "
-        "Provides tools to query and configure ports, PoE, VLANs, QoS, "
-        "mirroring, LAGs, IGMP snooping, DHCP snooping, loop prevention, "
-        "cable diagnostics, and more."
+        "MCP server for managing a TP-Link SG1016PE Easy Smart managed switch. "
+        "All port numbers are 1-based (1-16). The switch has 16 Gigabit Ethernet "
+        "ports, the first 8 of which support PoE+. Tools are grouped into: "
+        "system info, port management, PoE, 802.1Q VLANs, QoS, security "
+        "(IGMP/DHCP snooping, loop prevention), diagnostics, and LAG/mirroring."
     ),
 )
 
@@ -66,226 +67,139 @@ def _err(e: SwitchError) -> str:
 
 
 # ===================================================================
-# READ TOOLS
+# SYSTEM
 # ===================================================================
 
 
 @mcp.tool()
 async def get_device_info() -> dict[str, Any]:
-    """Get general device information (name, MAC, IP, firmware, hardware)."""
+    """Get basic switch identity: model name, MAC, IP, firmware and hardware version."""
     client = _get_client()
     return _to_dict(await client.get_device_info())
 
 
 @mcp.tool()
 async def get_dashboard() -> dict[str, Any]:
-    """Get the main dashboard: uptime and per-port live TX/RX rates.
+    """Get live switch overview: uptime and per-port TX/RX rates.
 
-    Rates are in bytes/sec. Uptime is a string in seconds.
+    Rates are in bytes/sec. This is the best tool for a quick health check.
     """
     client = _get_client()
     return _to_dict(await client.get_dashboard())
 
 
 @mcp.tool()
-async def get_port_states() -> list[dict[str, Any]]:
-    """Get the state of all switch ports (enabled, speed, flow control)."""
-    client = _get_client()
-    return _to_dict(await client.get_port_states())
-
-
-@mcp.tool()
-async def get_port_statistics() -> list[dict[str, Any]]:
-    """Get per-port packet statistics (TX/RX good/bad packet counts, link status).
-
-    Counters are cumulative since last switch reboot and wrap at 2^32.
-    """
-    client = _get_client()
-    return _to_dict(await client.get_port_statistics())
-
-
-@mcp.tool()
 async def get_ip_settings() -> dict[str, Any]:
-    """Get the switch's IP configuration (DHCP mode, IP, netmask, gateway)."""
+    """Get the switch management IP config: DHCP/static mode, IP, subnet mask, gateway."""
     client = _get_client()
     return _to_dict(await client.get_ip_settings())
 
 
 @mcp.tool()
 async def get_led_status() -> dict[str, bool]:
-    """Get whether the switch front-panel LEDs are on or off."""
+    """Check whether the switch's front-panel port LEDs are turned on or off."""
     client = _get_client()
     return {"led_on": await client.get_led_status()}
 
 
 @mcp.tool()
-async def get_cable_diagnostics() -> list[dict[str, Any]]:
-    """Get cable diagnostics results. Run run_cable_test first.
-
-    Per-port status: NOT_TESTED, NO_CABLE, NORMAL, OPEN, SHORT, OPEN_SHORT, CROSSTALK.
-    length_m is the detected cable length in meters.
-    """
-    client = _get_client()
-    return _to_dict(await client.get_cable_diagnostics())
-
-
-@mcp.tool()
-async def get_igmp_snooping() -> dict[str, Any]:
-    """Get IGMP snooping config and discovered multicast groups."""
-    client = _get_client()
-    return _to_dict(await client.get_igmp_snooping())
-
-
-@mcp.tool()
-async def get_lag_config() -> dict[str, Any]:
-    """Get link aggregation group (LAG / port trunk) configuration.
-
-    Shows configured LAG groups and their member ports.
-    """
-    client = _get_client()
-    return _to_dict(await client.get_lag_config())
-
-
-@mcp.tool()
-async def get_port_mirror_config() -> dict[str, Any]:
-    """Get port mirroring configuration.
-
-    Shows the destination (monitoring) port and which source ports
-    are mirrored for ingress and/or egress traffic.
-    """
-    client = _get_client()
-    return _to_dict(await client.get_port_mirror_config())
-
-
-@mcp.tool()
-async def get_loop_prevention() -> dict[str, bool]:
-    """Get whether loop prevention is enabled."""
-    client = _get_client()
-    return {"enabled": await client.get_loop_prevention()}
-
-
-@mcp.tool()
-async def get_qos_config() -> dict[str, Any]:
-    """Get QoS mode and per-port priority queue settings.
-
-    Mode is PORT_BASED, DOT1P_BASED, or DSCP_BASED.
-    Per-port priority is LOWEST, NORMAL, MEDIUM, or HIGHEST.
-    """
-    client = _get_client()
-    return _to_dict(await client.get_qos_config())
-
-
-@mcp.tool()
-async def get_bandwidth_limits() -> list[dict[str, Any]]:
-    """Get per-port ingress/egress bandwidth rate limits.
-
-    Rates are in kbps. 0 means unlimited.
-    """
-    client = _get_client()
-    return _to_dict(await client.get_bandwidth_limits())
-
-
-@mcp.tool()
-async def get_storm_control() -> list[dict[str, Any]]:
-    """Get per-port storm control settings.
-
-    Shows rate limit and which traffic types are controlled
-    (broadcast, multicast, unknown_unicast).
-    """
-    client = _get_client()
-    return _to_dict(await client.get_storm_control())
-
-
-@mcp.tool()
-async def get_poe_port_states() -> list[dict[str, Any]]:
-    """Get PoE state for all PoE-capable ports (power, voltage, current, status)."""
-    client = _get_client()
-    return _to_dict(await client.get_poe_port_states())
-
-
-@mcp.tool()
-async def get_poe_global_state() -> dict[str, Any] | str:
-    """Get the global PoE power budget (limit, consumption, remaining)."""
-    client = _get_client()
-    state = await client.get_poe_global_state()
-    if state is None:
-        return "PoE is not available on this device"
-    return _to_dict(state)
-
-
-@mcp.tool()
-async def get_poe_recovery() -> dict[str, Any]:
-    """Get PoE auto-recovery (ping watchdog) config.
-
-    When enabled, the switch pings devices on PoE ports and automatically
-    restarts PoE if the device stops responding.
-    """
-    client = _get_client()
-    return _to_dict(await client.get_poe_recovery())
-
-
-@mcp.tool()
-async def get_poe_extend() -> dict[str, Any]:
-    """Get PoE extend mode per port.
-
-    When enabled on a port, PoE range extends to 250m at 10Mbps.
-    """
-    client = _get_client()
-    return _to_dict(await client.get_poe_extend())
-
-
-@mcp.tool()
-async def get_dhcp_snooping() -> dict[str, Any]:
-    """Get DHCP snooping configuration (enabled state and trusted/untrusted ports)."""
-    client = _get_client()
-    return _to_dict(await client.get_dhcp_snooping())
-
-
-@mcp.tool()
-async def get_port_isolation() -> list[dict[str, Any]]:
-    """Get port isolation config: which ports each port is allowed to forward to."""
-    client = _get_client()
-    return _to_dict(await client.get_port_isolation())
-
-
-@mcp.tool()
-async def get_vlan_config() -> dict[str, Any]:
-    """Get the 802.1Q VLAN configuration.
-
-    Returns whether 802.1Q is enabled, the max VLAN count, and each VLAN
-    with its ID, name, tagged ports, and untagged ports.
-    """
-    client = _get_client()
-    return _to_dict(await client.get_vlan_config())
-
-
-@mcp.tool()
-async def get_pvid_config() -> dict[str, Any]:
-    """Get the per-port PVID (default VLAN ID) settings.
-
-    Returns whether 802.1Q is enabled and the PVID assigned to each port.
-    Incoming untagged frames on a port are assigned to its PVID.
-    """
-    client = _get_client()
-    return _to_dict(await client.get_pvid_config())
-
-
-@mcp.tool()
-async def search_mac_table(mac_address: str) -> list[Any]:
-    """Search the switch's MAC address table for a specific MAC.
+async def set_device_name(name: str) -> str:
+    """Change the switch's system name (shown in the web UI and device info).
 
     Args:
-        mac_address: MAC address to search for (e.g. "AA-BB-CC-DD-EE-FF").
+        name: New device name/description.
     """
     client = _get_client()
-    return await client.search_mac_table(mac_address)
+    try:
+        await client.set_device_name(name)
+    except SwitchError as e:
+        return _err(e)
+    return f"Device name set to '{name}'"
+
+
+@mcp.tool()
+async def set_ip_settings(
+    dhcp: bool,
+    ip: str = "",
+    netmask: str = "",
+    gateway: str = "",
+) -> str:
+    """Change the switch management IP configuration.
+
+    WARNING: This may make the switch unreachable if misconfigured.
+
+    Args:
+        dhcp: True for DHCP (auto), False for static IP.
+        ip: Static IP address (only used when dhcp=False).
+        netmask: Subnet mask (only used when dhcp=False).
+        gateway: Default gateway (only used when dhcp=False).
+    """
+    client = _get_client()
+    try:
+        await client.set_ip_settings(dhcp=dhcp, ip=ip, netmask=netmask, gateway=gateway)
+    except SwitchError as e:
+        return _err(e)
+    if dhcp:
+        return "IP settings changed to DHCP"
+    return f"IP settings changed to static: {ip}/{netmask} gw {gateway}"
+
+
+@mcp.tool()
+async def set_led(on: bool) -> str:
+    """Turn the switch's front-panel port LEDs on or off.
+
+    Args:
+        on: True to turn LEDs on, False to turn them off.
+    """
+    client = _get_client()
+    try:
+        await client.set_led(on=on)
+    except SwitchError as e:
+        return _err(e)
+    return f"LEDs {'on' if on else 'off'}"
+
+
+@mcp.tool()
+async def reboot_switch() -> str:
+    """Reboot the switch. Running configuration is saved to flash before rebooting.
+
+    The switch will be unreachable for approximately 30 seconds.
+    """
+    client = _get_client()
+    try:
+        await client.reboot()
+    except SwitchError as e:
+        return _err(e)
+    return "Switch is rebooting"
 
 
 # ===================================================================
-# WRITE TOOLS
+# PORT MANAGEMENT
 # ===================================================================
 
-# --- Port ---
+
+@mcp.tool()
+async def get_port_states() -> list[dict[str, Any]]:
+    """Get configuration and link status for all 16 switch ports.
+
+    Per port: enabled (admin state), speed_config (configured speed),
+    speed_actual (negotiated link speed, LINK_DOWN if no link),
+    flow_control_config/actual. Speed values: LINK_DOWN, AUTO,
+    HALF_10M, FULL_10M, HALF_100M, FULL_100M, FULL_1000M.
+    """
+    client = _get_client()
+    return _to_dict(await client.get_port_states())
+
+
+@mcp.tool()
+async def get_port_statistics() -> list[dict[str, Any]]:
+    """Get per-port packet counters (TX/RX good and bad packets).
+
+    Counters are cumulative since last reboot and wrap at 2^32 (4 billion).
+    Also includes each port's enabled state and link_status (negotiated speed).
+    """
+    client = _get_client()
+    return _to_dict(await client.get_port_statistics())
 
 
 @mcp.tool()
@@ -295,13 +209,13 @@ async def set_port_state(
     speed: str = "AUTO",
     flow_control: bool = False,
 ) -> str:
-    """Enable/disable a switch port and configure its speed and flow control.
+    """Enable or disable a switch port, and optionally set its speed and flow control.
 
     Args:
-        port: Port number (1-based).
-        enabled: Whether the port should be enabled.
-        speed: One of: AUTO, HALF_10M, FULL_10M, HALF_100M, FULL_100M, FULL_1000M.
-        flow_control: Whether to enable flow control.
+        port: Port number (1-16).
+        enabled: True to enable the port, False to administratively shut it down.
+        speed: Link speed. One of: AUTO, HALF_10M, FULL_10M, HALF_100M, FULL_100M, FULL_1000M.
+        flow_control: True to enable 802.3x flow control (pause frames).
     """
     client = _get_client()
     try:
@@ -318,302 +232,60 @@ async def set_port_state(
     return f"Port {port} updated: enabled={enabled}, speed={speed}"
 
 
-# --- LED ---
+# ===================================================================
+# PoE (POWER OVER ETHERNET)
+# ===================================================================
 
 
 @mcp.tool()
-async def set_led(on: bool) -> str:
-    """Turn the switch front-panel LEDs on or off.
+async def get_poe_port_states() -> list[dict[str, Any]]:
+    """Get PoE status for all PoE-capable ports (ports 1-8 on the SG1016PE).
 
-    Args:
-        on: True to turn LEDs on, False to turn off.
+    Per port: enabled, priority (HIGH/MIDDLE/LOW), power_limit (AUTO or CLASS_1-4),
+    power_watts (current draw), current_ma, voltage_v, pd_class (detected device class,
+    NO_PD if nothing connected), power_status (OFF/TURNING_ON/ON/OVERLOAD/SHORT/etc).
     """
     client = _get_client()
-    try:
-        await client.set_led(on=on)
-    except SwitchError as e:
-        return _err(e)
-    return f"LEDs {'on' if on else 'off'}"
-
-
-# --- Cable diagnostics ---
+    return _to_dict(await client.get_poe_port_states())
 
 
 @mcp.tool()
-async def run_cable_test(ports: list[int]) -> str:
-    """Run cable diagnostics on the specified ports.
+async def get_poe_global_state() -> dict[str, Any] | str:
+    """Get the switch-wide PoE power budget in watts: limit, consumption, remaining."""
+    client = _get_client()
+    state = await client.get_poe_global_state()
+    if state is None:
+        return "PoE is not available on this device"
+    return _to_dict(state)
 
-    Results can be read afterwards with get_cable_diagnostics.
 
-    Args:
-        ports: List of port numbers (1-based) to test.
+@mcp.tool()
+async def get_poe_recovery() -> dict[str, Any]:
+    """Get PoE auto-recovery (ping watchdog) configuration.
+
+    When enabled, the switch periodically pings the IP of a PoE-powered device
+    and automatically power-cycles the port if the device stops responding.
     """
     client = _get_client()
-    try:
-        await client.run_cable_test(ports)
-    except SwitchError as e:
-        return _err(e)
-    return f"Cable test started on ports {ports}"
-
-
-# --- Loop prevention ---
+    return _to_dict(await client.get_poe_recovery())
 
 
 @mcp.tool()
-async def set_loop_prevention(enabled: bool) -> str:
-    """Enable or disable loop prevention.
+async def get_poe_extend() -> dict[str, Any]:
+    """Get PoE extend mode status per port.
 
-    Args:
-        enabled: True to enable, False to disable.
+    When extend mode is enabled on a port, PoE reach extends to 250 meters
+    but the link speed drops to 10 Mbps.
     """
     client = _get_client()
-    try:
-        await client.set_loop_prevention(enabled=enabled)
-    except SwitchError as e:
-        return _err(e)
-    return f"Loop prevention {'enabled' if enabled else 'disabled'}"
-
-
-# --- IGMP snooping ---
+    return _to_dict(await client.get_poe_extend())
 
 
 @mcp.tool()
-async def set_igmp_snooping(enabled: bool, report_suppression: bool = False) -> str:
-    """Enable or disable IGMP snooping.
+async def set_poe_global_limit(limit: float) -> str:
+    """Set the switch-wide PoE power budget limit in watts.
 
-    Args:
-        enabled: True to enable, False to disable.
-        report_suppression: True to suppress duplicate IGMP reports.
-    """
-    client = _get_client()
-    try:
-        await client.set_igmp_snooping(enabled=enabled, report_suppression=report_suppression)
-    except SwitchError as e:
-        return _err(e)
-    return f"IGMP snooping {'enabled' if enabled else 'disabled'}"
-
-
-# --- QoS ---
-
-
-@mcp.tool()
-async def set_qos_mode(mode: str) -> str:
-    """Set the global QoS scheduling mode.
-
-    Args:
-        mode: One of: PORT_BASED, DOT1P_BASED, DSCP_BASED.
-    """
-    client = _get_client()
-    try:
-        qos_mode = QosMode[mode.upper()]
-    except KeyError:
-        return f"Invalid mode '{mode}'. Valid: PORT_BASED, DOT1P_BASED, DSCP_BASED"
-    try:
-        await client.set_qos_mode(qos_mode)
-    except SwitchError as e:
-        return _err(e)
-    return f"QoS mode set to {mode}"
-
-
-@mcp.tool()
-async def set_port_qos_priority(port: int, priority: str) -> str:
-    """Set the QoS priority queue for a port (only effective in PORT_BASED mode).
-
-    Args:
-        port: Port number (1-based).
-        priority: One of: LOWEST, NORMAL, MEDIUM, HIGHEST.
-    """
-    client = _get_client()
-    try:
-        qos_pri = QosPriority[priority.upper()]
-    except KeyError:
-        return f"Invalid priority '{priority}'. Valid: LOWEST, NORMAL, MEDIUM, HIGHEST"
-    try:
-        await client.set_port_qos_priority(port, qos_pri)
-    except SwitchError as e:
-        return _err(e)
-    return f"Port {port} QoS priority set to {priority}"
-
-
-@mcp.tool()
-async def set_bandwidth_limit(port: int, ingress_rate: int, egress_rate: int) -> str:
-    """Set per-port ingress/egress bandwidth rate limits.
-
-    Args:
-        port: Port number (1-based).
-        ingress_rate: Ingress rate limit in kbps. 0 for unlimited.
-        egress_rate: Egress rate limit in kbps. 0 for unlimited.
-    """
-    client = _get_client()
-    try:
-        await client.set_bandwidth_limit(port, ingress_rate=ingress_rate, egress_rate=egress_rate)
-    except SwitchError as e:
-        return _err(e)
-    return f"Port {port} bandwidth: ingress={ingress_rate}kbps, egress={egress_rate}kbps"
-
-
-@mcp.tool()
-async def set_storm_control(
-    port: int,
-    enabled: bool,
-    rate: int,
-    broadcast: bool = True,
-    multicast: bool = False,
-    unknown_unicast: bool = False,
-) -> str:
-    """Set per-port storm control (rate limit broadcast/multicast/unknown unicast).
-
-    Args:
-        port: Port number (1-based).
-        enabled: True to enable storm control on this port.
-        rate: Rate limit value in kbps.
-        broadcast: Control broadcast storms.
-        multicast: Control multicast storms.
-        unknown_unicast: Control unknown unicast storms.
-    """
-    client = _get_client()
-    try:
-        await client.set_storm_control(
-            port,
-            enabled=enabled,
-            rate=rate,
-            broadcast=broadcast,
-            multicast=multicast,
-            unknown_unicast=unknown_unicast,
-        )
-    except SwitchError as e:
-        return _err(e)
-    return f"Port {port} storm control {'enabled' if enabled else 'disabled'}"
-
-
-# --- Port mirroring ---
-
-
-@mcp.tool()
-async def set_port_mirror(
-    enabled: bool,
-    destination_port: int = 1,
-    ingress_ports: list[int] | None = None,
-    egress_ports: list[int] | None = None,
-) -> str:
-    """Configure port mirroring.
-
-    Args:
-        enabled: True to enable port mirroring.
-        destination_port: The monitoring port that receives mirrored traffic.
-        ingress_ports: Source ports to mirror ingress (incoming) traffic from.
-        egress_ports: Source ports to mirror egress (outgoing) traffic from.
-    """
-    client = _get_client()
-    try:
-        await client.set_port_mirror(
-            enabled=enabled,
-            destination_port=destination_port,
-            ingress_ports=ingress_ports,
-            egress_ports=egress_ports,
-        )
-    except SwitchError as e:
-        return _err(e)
-    state = "enabled" if enabled else "disabled"
-    return f"Port mirroring {state}, destination=port {destination_port}"
-
-
-# --- Port isolation ---
-
-
-@mcp.tool()
-async def set_port_isolation(port: int, forwarding_ports: list[int]) -> str:
-    """Set which ports a given port is allowed to forward traffic to.
-
-    Args:
-        port: The port to configure isolation for (1-based).
-        forwarding_ports: List of port numbers this port can forward to.
-    """
-    client = _get_client()
-    try:
-        await client.set_port_isolation(port, forwarding_ports)
-    except SwitchError as e:
-        return _err(e)
-    return f"Port {port} isolation updated: forwards to {forwarding_ports}"
-
-
-# --- LAG ---
-
-
-@mcp.tool()
-async def create_lag(group_id: int, ports: list[int]) -> str:
-    """Create or modify a link aggregation group (LAG / port trunk).
-
-    Args:
-        group_id: LAG group ID (1-8).
-        ports: List of member port numbers.
-    """
-    client = _get_client()
-    try:
-        await client.create_lag(group_id, ports)
-    except SwitchError as e:
-        return _err(e)
-    return f"LAG group {group_id} created with ports {ports}"
-
-
-@mcp.tool()
-async def delete_lag(group_id: int) -> str:
-    """Delete a link aggregation group (LAG / port trunk).
-
-    Args:
-        group_id: LAG group ID to delete (1-8).
-    """
-    client = _get_client()
-    try:
-        await client.delete_lag(group_id)
-    except SwitchError as e:
-        return _err(e)
-    return f"LAG group {group_id} deleted"
-
-
-# --- DHCP snooping ---
-
-
-@mcp.tool()
-async def set_dhcp_snooping(enabled: bool) -> str:
-    """Enable or disable DHCP snooping globally.
-
-    Args:
-        enabled: True to enable, False to disable.
-    """
-    client = _get_client()
-    try:
-        await client.set_dhcp_snooping_enabled(enabled=enabled)
-    except SwitchError as e:
-        return _err(e)
-    return f"DHCP snooping {'enabled' if enabled else 'disabled'}"
-
-
-@mcp.tool()
-async def set_dhcp_snooping_port(port: int, trusted: bool) -> str:
-    """Set a port as trusted or untrusted for DHCP snooping.
-
-    Trusted ports accept DHCP server responses. Untrusted ports only allow
-    DHCP client requests (blocks rogue DHCP servers).
-
-    Args:
-        port: Port number (1-based).
-        trusted: True for trusted (DHCP server side), False for untrusted.
-    """
-    client = _get_client()
-    try:
-        await client.set_dhcp_snooping_port(port, trusted=trusted)
-    except SwitchError as e:
-        return _err(e)
-    return f"Port {port} DHCP snooping: {'trusted' if trusted else 'untrusted'}"
-
-
-# --- PoE ---
-
-
-@mcp.tool()
-async def set_poe_limit(limit: float) -> str:
-    """Set the global PoE power budget limit in watts.
+    The switch enforces a maximum total power draw across all PoE ports.
 
     Args:
         limit: Power budget in watts. Must be within the device's supported range.
@@ -633,13 +305,14 @@ async def set_poe_port(
     priority: str = "HIGH",
     power_limit: str = "AUTO",
 ) -> str:
-    """Configure PoE settings for a specific port.
+    """Configure PoE on a specific port.
 
     Args:
-        port: Port number (1-based).
-        enabled: Whether PoE should be enabled on this port.
-        priority: PoE priority. One of: HIGH, MIDDLE, LOW.
-        power_limit: AUTO, CLASS_1-4, or a float 0.1-30.0 for custom watts.
+        port: Port number (1-8 on the SG1016PE).
+        enabled: True to supply power, False to cut PoE power.
+        priority: Power allocation priority when budget is constrained. HIGH, MIDDLE, or LOW.
+        power_limit: Max power class. AUTO (negotiated), CLASS_1 (4W), CLASS_2 (7W),
+            CLASS_3 (15.4W), CLASS_4 (30W), or a float 0.1-30.0 for custom wattage.
     """
     client = _get_client()
 
@@ -670,12 +343,12 @@ async def set_poe_port(
 
 @mcp.tool()
 async def repower_poe_port(port: int) -> str:
-    """Restart PoE on a port without changing its configuration.
+    """Power-cycle a PoE port: briefly cuts and restores power without changing config.
 
-    Useful for rebooting a PoE-powered device.
+    Useful for remotely rebooting a PoE-powered device (AP, camera, etc).
 
     Args:
-        port: Port number (1-based).
+        port: Port number (1-8 on the SG1016PE).
     """
     client = _get_client()
     try:
@@ -685,15 +358,43 @@ async def repower_poe_port(port: int) -> str:
     return f"Port {port} PoE re-powered"
 
 
-# --- VLAN ---
+# ===================================================================
+# 802.1Q VLANs
+# ===================================================================
+
+
+@mcp.tool()
+async def get_vlan_config() -> dict[str, Any]:
+    """Get the full 802.1Q VLAN configuration.
+
+    Returns: enabled (whether 802.1Q mode is active), max_vlans (device limit, typically 32),
+    and a list of VLANs each with vid, name, tagged_ports, and untagged_ports.
+    VLAN 1 ('Default') always exists with all ports as untagged members by default.
+    """
+    client = _get_client()
+    return _to_dict(await client.get_vlan_config())
+
+
+@mcp.tool()
+async def get_pvid_config() -> dict[str, Any]:
+    """Get the per-port PVID (Port VLAN ID / native VLAN) assignments.
+
+    Each port has a PVID that determines which VLAN incoming untagged frames
+    are classified into. Defaults to VLAN 1 for all ports.
+    """
+    client = _get_client()
+    return _to_dict(await client.get_pvid_config())
 
 
 @mcp.tool()
 async def set_vlan_enabled(enabled: bool) -> str:
     """Enable or disable 802.1Q VLAN mode on the switch.
 
+    WARNING: Disabling 802.1Q removes all VLAN separation. Only one VLAN
+    mode (802.1Q, MTU, or port-based) can be active at a time.
+
     Args:
-        enabled: True to enable, False to disable.
+        enabled: True to enable 802.1Q VLANs, False to disable.
     """
     client = _get_client()
     try:
@@ -710,15 +411,17 @@ async def create_or_update_vlan(
     tagged_ports: list[int] | None = None,
     untagged_ports: list[int] | None = None,
 ) -> str:
-    """Create or modify an 802.1Q VLAN.
+    """Create a new 802.1Q VLAN or update an existing one.
 
+    Every port must be either tagged, untagged, or not a member.
     Ports not listed in tagged_ports or untagged_ports become non-members.
+    The name is filtered to alphanumeric characters and truncated to 10 chars.
 
     Args:
         vid: VLAN ID (1-4094).
-        name: VLAN name (alphanumeric, max 10 chars).
-        tagged_ports: List of port numbers that should be tagged members.
-        untagged_ports: List of port numbers that should be untagged members.
+        name: VLAN name (alphanumeric only, max 10 characters).
+        tagged_ports: Ports that send/receive frames with an 802.1Q VLAN tag.
+        untagged_ports: Ports that send frames without a VLAN tag (access ports).
     """
     client = _get_client()
     memberships: dict[int, VlanPortMembership] = {}
@@ -737,10 +440,10 @@ async def create_or_update_vlan(
 
 @mcp.tool()
 async def delete_vlan(vid: int) -> str:
-    """Delete an 802.1Q VLAN.
+    """Delete an 802.1Q VLAN. VLAN 1 (Default) cannot be deleted.
 
     Args:
-        vid: VLAN ID to delete. VLAN 1 (Default) cannot be deleted.
+        vid: VLAN ID to delete (2-4094).
     """
     client = _get_client()
     try:
@@ -752,13 +455,14 @@ async def delete_vlan(vid: int) -> str:
 
 @mcp.tool()
 async def set_port_pvid(port: int, pvid: int) -> str:
-    """Set the PVID (default VLAN) for a port.
+    """Set a port's PVID (native VLAN for untagged ingress traffic).
 
-    Incoming untagged frames on this port will be assigned to this VLAN.
+    All untagged frames arriving on this port will be assigned to this VLAN.
+    The port must be an untagged or tagged member of the target VLAN.
 
     Args:
-        port: Port number (1-based).
-        pvid: VLAN ID to assign as the port's default.
+        port: Port number (1-16).
+        pvid: VLAN ID to assign as the port's native VLAN.
     """
     client = _get_client()
     try:
@@ -768,60 +472,406 @@ async def set_port_pvid(port: int, pvid: int) -> str:
     return f"Port {port} PVID set to {pvid}"
 
 
-# --- System ---
+# ===================================================================
+# QoS (QUALITY OF SERVICE)
+# ===================================================================
 
 
 @mcp.tool()
-async def set_device_name(name: str) -> str:
-    """Set the switch's system name/description.
+async def get_qos_config() -> dict[str, Any]:
+    """Get the QoS configuration: scheduling mode and per-port priority queues.
+
+    mode: PORT_BASED (priority set per port), DOT1P_BASED (from 802.1p VLAN tag),
+    or DSCP_BASED (from IP header DSCP field).
+    Per-port priority (PORT_BASED only): LOWEST, NORMAL, MEDIUM, HIGHEST.
+    """
+    client = _get_client()
+    return _to_dict(await client.get_qos_config())
+
+
+@mcp.tool()
+async def get_bandwidth_limits() -> list[dict[str, Any]]:
+    """Get per-port ingress and egress bandwidth rate limits in kbps.
+
+    A value of 0 means no rate limit (unlimited).
+    """
+    client = _get_client()
+    return _to_dict(await client.get_bandwidth_limits())
+
+
+@mcp.tool()
+async def get_storm_control() -> list[dict[str, Any]]:
+    """Get per-port storm control settings.
+
+    Storm control rate-limits broadcast, multicast, and/or unknown unicast
+    traffic to prevent network flooding. Shows rate (kbps) and which
+    traffic types are controlled per port.
+    """
+    client = _get_client()
+    return _to_dict(await client.get_storm_control())
+
+
+@mcp.tool()
+async def set_qos_mode(mode: str) -> str:
+    """Set the global QoS scheduling mode.
 
     Args:
-        name: New device name.
+        mode: PORT_BASED (manual per-port priority), DOT1P_BASED (from 802.1p tag),
+            or DSCP_BASED (from IP header).
     """
     client = _get_client()
     try:
-        await client.set_device_name(name)
+        qos_mode = QosMode[mode.upper()]
+    except KeyError:
+        return f"Invalid mode '{mode}'. Valid: PORT_BASED, DOT1P_BASED, DSCP_BASED"
+    try:
+        await client.set_qos_mode(qos_mode)
     except SwitchError as e:
         return _err(e)
-    return f"Device name set to '{name}'"
+    return f"QoS mode set to {mode}"
 
 
 @mcp.tool()
-async def set_ip_settings(
-    dhcp: bool,
-    ip: str = "",
-    netmask: str = "",
-    gateway: str = "",
+async def set_port_qos_priority(port: int, priority: str) -> str:
+    """Set a port's QoS priority queue. Only effective when QoS mode is PORT_BASED.
+
+    Args:
+        port: Port number (1-16).
+        priority: LOWEST (queue 0), NORMAL (queue 1), MEDIUM (queue 2), or HIGHEST (queue 3).
+    """
+    client = _get_client()
+    try:
+        qos_pri = QosPriority[priority.upper()]
+    except KeyError:
+        return f"Invalid priority '{priority}'. Valid: LOWEST, NORMAL, MEDIUM, HIGHEST"
+    try:
+        await client.set_port_qos_priority(port, qos_pri)
+    except SwitchError as e:
+        return _err(e)
+    return f"Port {port} QoS priority set to {priority}"
+
+
+@mcp.tool()
+async def set_bandwidth_limit(port: int, ingress_rate: int, egress_rate: int) -> str:
+    """Set per-port ingress and egress bandwidth rate limits.
+
+    Args:
+        port: Port number (1-16).
+        ingress_rate: Max incoming traffic rate in kbps. 0 for unlimited.
+        egress_rate: Max outgoing traffic rate in kbps. 0 for unlimited.
+    """
+    client = _get_client()
+    try:
+        await client.set_bandwidth_limit(port, ingress_rate=ingress_rate, egress_rate=egress_rate)
+    except SwitchError as e:
+        return _err(e)
+    return f"Port {port} bandwidth: ingress={ingress_rate}kbps, egress={egress_rate}kbps"
+
+
+@mcp.tool()
+async def set_storm_control(
+    port: int,
+    enabled: bool,
+    rate: int,
+    broadcast: bool = True,
+    multicast: bool = False,
+    unknown_unicast: bool = False,
 ) -> str:
-    """Change the switch's IP configuration.
-
-    WARNING: Changing IP settings may make the switch unreachable.
+    """Configure storm control on a port to rate-limit flooding traffic.
 
     Args:
-        dhcp: True to enable DHCP, False for static IP.
-        ip: Static IP address (ignored if dhcp=True).
-        netmask: Subnet mask (ignored if dhcp=True).
-        gateway: Default gateway (ignored if dhcp=True).
+        port: Port number (1-16).
+        enabled: True to activate storm control on this port.
+        rate: Maximum allowed rate in kbps for controlled traffic types.
+        broadcast: Rate-limit broadcast traffic (e.g. ARP storms).
+        multicast: Rate-limit multicast traffic.
+        unknown_unicast: Rate-limit unknown unicast traffic (flooded frames).
     """
     client = _get_client()
     try:
-        await client.set_ip_settings(dhcp=dhcp, ip=ip, netmask=netmask, gateway=gateway)
+        await client.set_storm_control(
+            port,
+            enabled=enabled,
+            rate=rate,
+            broadcast=broadcast,
+            multicast=multicast,
+            unknown_unicast=unknown_unicast,
+        )
     except SwitchError as e:
         return _err(e)
-    if dhcp:
-        return "IP settings changed to DHCP"
-    return f"IP settings changed to static: {ip}/{netmask} gw {gateway}"
+    return f"Port {port} storm control {'enabled' if enabled else 'disabled'}"
+
+
+# ===================================================================
+# SECURITY
+# ===================================================================
 
 
 @mcp.tool()
-async def reboot_switch() -> str:
-    """Reboot the switch. Configuration is saved before rebooting.
+async def get_igmp_snooping() -> dict[str, Any]:
+    """Get IGMP snooping configuration and the current multicast group table.
 
-    The switch will be unreachable for ~30 seconds during reboot.
+    IGMP snooping constrains multicast traffic to only the ports with interested
+    receivers, instead of flooding it to all ports.
+    """
+    client = _get_client()
+    return _to_dict(await client.get_igmp_snooping())
+
+
+@mcp.tool()
+async def get_dhcp_snooping() -> dict[str, Any]:
+    """Get DHCP snooping configuration: global enable state and per-port trust status.
+
+    DHCP snooping blocks rogue DHCP servers by only allowing DHCP offers
+    on trusted ports (typically the uplink to the real DHCP server).
+    """
+    client = _get_client()
+    return _to_dict(await client.get_dhcp_snooping())
+
+
+@mcp.tool()
+async def get_loop_prevention() -> dict[str, bool]:
+    """Check whether loop prevention is enabled.
+
+    Loop prevention detects and blocks Layer 2 loops caused by
+    incorrect cabling or misconfiguration.
+    """
+    client = _get_client()
+    return {"enabled": await client.get_loop_prevention()}
+
+
+@mcp.tool()
+async def set_igmp_snooping(enabled: bool, report_suppression: bool = False) -> str:
+    """Enable or disable IGMP snooping.
+
+    Args:
+        enabled: True to enable IGMP snooping.
+        report_suppression: True to suppress duplicate IGMP membership reports
+            (reduces multicast control traffic on the uplink).
     """
     client = _get_client()
     try:
-        await client.reboot()
+        await client.set_igmp_snooping(enabled=enabled, report_suppression=report_suppression)
     except SwitchError as e:
         return _err(e)
-    return "Switch is rebooting"
+    return f"IGMP snooping {'enabled' if enabled else 'disabled'}"
+
+
+@mcp.tool()
+async def set_dhcp_snooping(enabled: bool) -> str:
+    """Enable or disable DHCP snooping globally.
+
+    Args:
+        enabled: True to enable (blocks rogue DHCP servers on untrusted ports).
+    """
+    client = _get_client()
+    try:
+        await client.set_dhcp_snooping_enabled(enabled=enabled)
+    except SwitchError as e:
+        return _err(e)
+    return f"DHCP snooping {'enabled' if enabled else 'disabled'}"
+
+
+@mcp.tool()
+async def set_dhcp_snooping_port(port: int, trusted: bool) -> str:
+    """Mark a port as trusted or untrusted for DHCP snooping.
+
+    Trusted ports allow DHCP server responses (offers/ACKs). Only the
+    uplink to your real DHCP server should be trusted.
+
+    Args:
+        port: Port number (1-16).
+        trusted: True for trusted (allows DHCP server traffic), False for untrusted.
+    """
+    client = _get_client()
+    try:
+        await client.set_dhcp_snooping_port(port, trusted=trusted)
+    except SwitchError as e:
+        return _err(e)
+    return f"Port {port} DHCP snooping: {'trusted' if trusted else 'untrusted'}"
+
+
+@mcp.tool()
+async def set_loop_prevention(enabled: bool) -> str:
+    """Enable or disable loop prevention.
+
+    Args:
+        enabled: True to enable loop detection and blocking.
+    """
+    client = _get_client()
+    try:
+        await client.set_loop_prevention(enabled=enabled)
+    except SwitchError as e:
+        return _err(e)
+    return f"Loop prevention {'enabled' if enabled else 'disabled'}"
+
+
+# ===================================================================
+# DIAGNOSTICS
+# ===================================================================
+
+
+@mcp.tool()
+async def get_cable_diagnostics() -> list[dict[str, Any]]:
+    """Get cable diagnostics results (must call run_cable_test first).
+
+    Per-port: status (NOT_TESTED, NO_CABLE, NORMAL, OPEN, SHORT, OPEN_SHORT,
+    CROSSTALK) and length_m (estimated cable length in meters).
+    """
+    client = _get_client()
+    return _to_dict(await client.get_cable_diagnostics())
+
+
+@mcp.tool()
+async def run_cable_test(ports: list[int]) -> str:
+    """Start cable diagnostics (TDR test) on specified ports.
+
+    Tests cable quality and estimates length. Results are available via
+    get_cable_diagnostics after the test completes (~2 seconds).
+
+    Args:
+        ports: Port numbers to test (1-16).
+    """
+    client = _get_client()
+    try:
+        await client.run_cable_test(ports)
+    except SwitchError as e:
+        return _err(e)
+    return f"Cable test started on ports {ports}"
+
+
+@mcp.tool()
+async def search_mac_table(mac_address: str) -> list[Any]:
+    """Search the switch's MAC address table for a specific MAC address.
+
+    Useful for finding which port a device is connected to.
+
+    Args:
+        mac_address: MAC address in dash-separated format (e.g. "AA-BB-CC-DD-EE-FF").
+    """
+    client = _get_client()
+    return await client.search_mac_table(mac_address)
+
+
+# ===================================================================
+# LAG / PORT MIRRORING / PORT ISOLATION
+# ===================================================================
+
+
+@mcp.tool()
+async def get_lag_config() -> dict[str, Any]:
+    """Get link aggregation (LAG / port trunking) configuration.
+
+    LAGs bond multiple physical ports into a single logical link for
+    increased bandwidth and redundancy. Up to 8 groups supported.
+    """
+    client = _get_client()
+    return _to_dict(await client.get_lag_config())
+
+
+@mcp.tool()
+async def get_port_mirror_config() -> dict[str, Any]:
+    """Get port mirroring configuration.
+
+    Port mirroring copies traffic from source ports to a destination
+    (monitoring) port for packet capture or analysis. Shows which ports
+    are mirrored for ingress (incoming) and/or egress (outgoing) traffic.
+    """
+    client = _get_client()
+    return _to_dict(await client.get_port_mirror_config())
+
+
+@mcp.tool()
+async def get_port_isolation() -> list[dict[str, Any]]:
+    """Get port isolation (private VLAN-like) configuration.
+
+    Port isolation restricts which ports a given port can forward traffic to.
+    Each entry shows a port and the list of ports it is allowed to communicate with.
+    """
+    client = _get_client()
+    return _to_dict(await client.get_port_isolation())
+
+
+@mcp.tool()
+async def create_lag(group_id: int, ports: list[int]) -> str:
+    """Create or modify a link aggregation group (LAG / port trunk).
+
+    Member ports are bonded into a single logical link. Ports in a LAG
+    must have identical speed and duplex settings.
+
+    Args:
+        group_id: LAG group ID (1-8).
+        ports: Member port numbers to bond together.
+    """
+    client = _get_client()
+    try:
+        await client.create_lag(group_id, ports)
+    except SwitchError as e:
+        return _err(e)
+    return f"LAG group {group_id} created with ports {ports}"
+
+
+@mcp.tool()
+async def delete_lag(group_id: int) -> str:
+    """Delete a link aggregation group, releasing its member ports.
+
+    Args:
+        group_id: LAG group ID to delete (1-8).
+    """
+    client = _get_client()
+    try:
+        await client.delete_lag(group_id)
+    except SwitchError as e:
+        return _err(e)
+    return f"LAG group {group_id} deleted"
+
+
+@mcp.tool()
+async def set_port_mirror(
+    enabled: bool,
+    destination_port: int = 1,
+    ingress_ports: list[int] | None = None,
+    egress_ports: list[int] | None = None,
+) -> str:
+    """Configure port mirroring for traffic analysis.
+
+    Copies traffic from source ports to a destination port where a
+    packet sniffer or analyzer can be connected.
+
+    Args:
+        enabled: True to enable mirroring.
+        destination_port: The monitoring port that receives copied traffic.
+        ingress_ports: Source ports to mirror incoming traffic from.
+        egress_ports: Source ports to mirror outgoing traffic from.
+    """
+    client = _get_client()
+    try:
+        await client.set_port_mirror(
+            enabled=enabled,
+            destination_port=destination_port,
+            ingress_ports=ingress_ports,
+            egress_ports=egress_ports,
+        )
+    except SwitchError as e:
+        return _err(e)
+    state = "enabled" if enabled else "disabled"
+    return f"Port mirroring {state}, destination=port {destination_port}"
+
+
+@mcp.tool()
+async def set_port_isolation(port: int, forwarding_ports: list[int]) -> str:
+    """Restrict which ports a given port can forward traffic to.
+
+    Useful for client isolation (e.g. preventing guests from reaching
+    each other while still allowing access to the uplink).
+
+    Args:
+        port: The port to configure (1-16).
+        forwarding_ports: Ports this port is allowed to send traffic to.
+    """
+    client = _get_client()
+    try:
+        await client.set_port_isolation(port, forwarding_ports)
+    except SwitchError as e:
+        return _err(e)
+    return f"Port {port} isolation updated: forwards to {forwarding_ports}"

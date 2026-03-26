@@ -35,6 +35,7 @@ class PoeClass(IntEnum):
     CLASS_2 = 70
     CLASS_3 = 154
     CLASS_4 = 300
+    NO_PD = 331  # No PD detected / unknown class
 
 
 class PoePowerStatus(IntEnum):
