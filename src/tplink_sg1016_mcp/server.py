@@ -751,18 +751,6 @@ async def run_cable_test(ports: list[int]) -> list[dict[str, Any]]:
     return _to_dict(await client.run_cable_test(ports))
 
 
-@mcp.tool()
-async def search_mac_table(mac_address: str) -> list[Any]:
-    """Search the switch's MAC address table for a specific MAC address.
-
-    Useful for finding which port a device is connected to.
-
-    Args:
-        mac_address: MAC address in dash-separated format (e.g. "AA-BB-CC-DD-EE-FF").
-    """
-    client = _get_client()
-    return await client.search_mac_table(mac_address)
-
 
 # ===================================================================
 # LAG / PORT MIRRORING / PORT ISOLATION

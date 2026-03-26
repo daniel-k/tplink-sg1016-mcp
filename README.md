@@ -161,7 +161,6 @@ Or using the PEX:
 | Tool | Description |
 |---|---|
 | `run_cable_test` | Run TDR cable test on selected ports and return results |
-| `search_mac_table` | Find which port a MAC address is on |
 
 ### LAG / Mirroring
 

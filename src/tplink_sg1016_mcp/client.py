@@ -545,16 +545,6 @@ class SwitchClient:
 
         return PoeRecoveryConfig(enabled=enabled, ports=ports)
 
-    async def search_mac_table(self, mac_address: str) -> list[dict[str, Any]]:
-        """Search the MAC address table for a specific MAC."""
-        page = await self._authed_get(
-            f"mac_address_search.cgi?txt_macAddress_search={mac_address}&apply=Search"
-        )
-        data = get_variable(page, "mac_ds", VarType.DICT)
-        if not data:
-            return []
-        return data.get("mac_info", [])
-
     # --- PoE queries ---
 
     async def get_poe_port_states(self) -> list[PortPoeState]:
