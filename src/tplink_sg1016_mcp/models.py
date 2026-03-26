@@ -131,24 +131,6 @@ class PortStatistics:
     rx_bad_packets: int
 
 
-# --- Live port rates (MainRpm) ---
-
-
-@dataclass
-class PortRate:
-    number: int
-    enabled: bool
-    link_speed: PortSpeed
-    tx_rate: int
-    rx_rate: int
-
-
-@dataclass
-class DashboardInfo:
-    uptime: str
-    ports: list[PortRate] = field(default_factory=list)
-
-
 # --- IP settings ---
 
 
@@ -271,44 +253,6 @@ class PoeRecoveryPort:
 class PoeRecoveryConfig:
     enabled: bool
     ports: list[PoeRecoveryPort] = field(default_factory=list)
-
-
-# --- PoE extend ---
-
-
-@dataclass
-class PoeExtendPort:
-    port: int
-    enabled: bool
-
-
-@dataclass
-class PoeExtendConfig:
-    ports: list[PoeExtendPort] = field(default_factory=list)
-
-
-# --- DHCP snooping ---
-
-
-@dataclass
-class DhcpSnoopingPort:
-    port: int
-    trusted: bool
-
-
-@dataclass
-class DhcpSnoopingConfig:
-    enabled: bool
-    ports: list[DhcpSnoopingPort] = field(default_factory=list)
-
-
-# --- Port isolation ---
-
-
-@dataclass
-class PortIsolationEntry:
-    port: int
-    forwarding_ports: list[int] = field(default_factory=list)
 
 
 # --- VLAN models ---

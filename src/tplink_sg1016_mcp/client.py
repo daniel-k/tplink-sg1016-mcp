@@ -9,18 +9,13 @@ import aiohttp
 from .models import (
     CableDiagResult,
     CableStatus,
-    DashboardInfo,
     DeviceInfo,
-    DhcpSnoopingConfig,
-    DhcpSnoopingPort,
     IgmpGroup,
     IgmpSnoopingConfig,
     IpSettings,
     LagConfig,
     LagGroup,
     PoeClass,
-    PoeExtendConfig,
-    PoeExtendPort,
     PoeGlobalState,
     PoePowerLimit,
     PoePowerStatus,
@@ -28,12 +23,10 @@ from .models import (
     PoeRecoveryConfig,
     PoeRecoveryPort,
     PortBandwidthLimit,
-    PortIsolationEntry,
     PortMirrorConfig,
     PortPoeState,
     PortPvid,
     PortQosPriority,
-    PortRate,
     PortSpeed,
     PortState,
     PortStatistics,
@@ -249,43 +242,6 @@ class SwitchClient:
             firmware=val("firmwareStr"),
             hardware=val("hardwareStr"),
         )
-
-    async def get_dashboard(self) -> DashboardInfo:
-        """Get the main dashboard with live port TX/RX rates and uptime."""
-        page = await self._authed_get("MainRpm.htm")
-        data = get_variables(
-            page,
-            [
-                ("info_ds", VarType.DICT),
-                ("port_info", VarType.DICT),
-                ("max_port_num", VarType.INT),
-            ],
-        )
-
-        info_ds = data.get("info_ds") or {}
-        port_info = data.get("port_info") or {}
-        max_ports = data.get("max_port_num") or 0
-
-        work_time = info_ds.get("workTime", ["0"])[0] if info_ds.get("workTime") else "0"
-
-        states = port_info.get("state", [])
-        spd_act = port_info.get("spd_act", [])
-        rx_rates = port_info.get("rx_rate", [])
-        tx_rates = port_info.get("tx_rate", [])
-
-        ports: list[PortRate] = []
-        for i in range(max_ports):
-            ports.append(
-                PortRate(
-                    number=i + 1,
-                    enabled=states[i] == 1 if i < len(states) else False,
-                    link_speed=PortSpeed(spd_act[i]) if i < len(spd_act) else PortSpeed.LINK_DOWN,
-                    tx_rate=tx_rates[i] if i < len(tx_rates) else 0,
-                    rx_rate=rx_rates[i] if i < len(rx_rates) else 0,
-                )
-            )
-
-        return DashboardInfo(uptime=str(work_time), ports=ports)
 
     async def get_port_statistics(self) -> list[PortStatistics]:
         """Get per-port packet statistics."""
@@ -587,68 +543,6 @@ class SwitchClient:
             )
 
         return PoeRecoveryConfig(enabled=enabled, ports=ports)
-
-    async def get_poe_extend(self) -> PoeExtendConfig:
-        """Get PoE extend mode status per port."""
-        if not await self.is_poe_available():
-            return PoeExtendConfig()
-
-        page = await self._authed_get("poeExtendRpm.htm")
-        data = get_variables(
-            page,
-            [("poeExtendConfig", VarType.DICT), ("poe_port_num", VarType.INT)],
-        )
-
-        ext_cfg = data.get("poeExtendConfig") or {}
-        num_ports = data.get("poe_port_num") or 0
-        statuses = ext_cfg.get("status", [])
-
-        ports: list[PoeExtendPort] = []
-        for i in range(num_ports):
-            ports.append(
-                PoeExtendPort(
-                    port=i + 1,
-                    enabled=statuses[i] == 1 if i < len(statuses) else False,
-                )
-            )
-        return PoeExtendConfig(ports=ports)
-
-    async def get_dhcp_snooping(self) -> DhcpSnoopingConfig:
-        """Get DHCP snooping configuration."""
-        page = await self._authed_get("DhcpSnoopingRpm.htm")
-        data = get_variable(page, "dhcp_ds", VarType.DICT)
-        if not data:
-            return DhcpSnoopingConfig(enabled=False)
-
-        enabled = data.get("state", 0) == 1
-        trust_list = data.get("trust", [])
-
-        ports: list[DhcpSnoopingPort] = []
-        for i, trusted in enumerate(trust_list):
-            ports.append(DhcpSnoopingPort(port=i + 1, trusted=trusted == 1))
-
-        return DhcpSnoopingConfig(enabled=enabled, ports=ports)
-
-    async def get_port_isolation(self) -> list[PortIsolationEntry]:
-        """Get port isolation / forwarding restrictions."""
-        page = await self._authed_get("PortIsolationRpm.htm")
-        data = get_variable(page, "portIso_conf", VarType.DICT)
-        if not data:
-            return []
-
-        port_iso = data.get("port_iso", [])
-        port_count = len(port_iso)
-
-        result: list[PortIsolationEntry] = []
-        for i in range(port_count):
-            mask = port_iso[i]
-            result.append(
-                PortIsolationEntry(
-                    port=i + 1,
-                    forwarding_ports=self._bitmask_to_ports(mask, port_count),
-                )
-            )
-        return result
 
     async def search_mac_table(self, mac_address: str) -> list[dict[str, Any]]:
         """Search the MAC address table for a specific MAC."""
@@ -1047,16 +941,6 @@ class SwitchClient:
                     f"&ingressState=1&egressState=1&mirrored_submit=Apply"
                 )
 
-    # --- Port isolation ---
-
-    async def set_port_isolation(self, port: int, forwarding_ports: list[int]) -> None:
-        """Set which ports a given port is allowed to forward to."""
-        params = [f"groupId={port}"]
-        for p in forwarding_ports:
-            params.append(f"portid={p}")
-        params.append("setapply=Apply")
-        await self._authed_get(f"port_isolation_set.cgi?{'&'.join(params)}")
-
     # --- LAG ---
 
     async def create_lag(self, group_id: int, ports: list[int]) -> None:
@@ -1073,19 +957,6 @@ class SwitchClient:
         """Delete a link aggregation group."""
         query = f"chk_trunk={group_id}&setDelete=Delete"
         await self._authed_get(f"port_trunk_display.cgi?{query}")
-
-    # --- DHCP snooping ---
-
-    async def set_dhcp_snooping_enabled(self, *, enabled: bool) -> None:
-        query = f"dhcp_mode={1 if enabled else 0}&Apply=Apply"
-        await self._authed_get(f"dhcp_enable_set.cgi?{query}")
-
-    async def set_dhcp_snooping_port(self, port: int, *, trusted: bool) -> None:
-        query = (
-            f"dhcpport={port}&trustPort={1 if trusted else 0}"
-            f"&option82=0&operation=0&dhcp_submit=Apply"
-        )
-        await self._authed_get(f"dhcp_port_set.cgi?{query}")
 
     # --- System ---
 

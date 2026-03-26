@@ -96,7 +96,6 @@ Or using the PEX:
 | Tool | Description |
 |---|---|
 | `get_device_info` | Model name, MAC, IP, firmware, hardware version |
-| `get_dashboard` | Live uptime and per-port TX/RX traffic rates |
 | `get_ip_settings` | Switch management IP config (DHCP/static) |
 | `get_led_status` | Front-panel LED on/off state |
 | `set_device_name` | Change the switch's system name |
@@ -119,7 +118,6 @@ Or using the PEX:
 | `get_poe_port_states` | Per-port power, voltage, current, PD class, status |
 | `get_poe_global_state` | Switch-wide power budget, consumption, remaining |
 | `get_poe_recovery` | PoE auto-recovery (ping watchdog) config |
-| `get_poe_extend` | PoE extend mode (250m at 10Mbps) per port |
 | `set_poe_global_limit` | Set the global PoE power budget (watts) |
 | `set_poe_port` | Configure per-port PoE: enable, priority, power limit |
 | `repower_poe_port` | Power-cycle a PoE port to reboot connected device |
@@ -154,11 +152,8 @@ Or using the PEX:
 | Tool | Description |
 |---|---|
 | `get_igmp_snooping` | IGMP snooping config and multicast groups |
-| `get_dhcp_snooping` | DHCP snooping config and port trust status |
 | `get_loop_prevention` | Loop prevention enabled/disabled |
 | `set_igmp_snooping` | Enable/disable IGMP snooping |
-| `set_dhcp_snooping` | Enable/disable DHCP snooping |
-| `set_dhcp_snooping_port` | Set port as trusted/untrusted for DHCP |
 | `set_loop_prevention` | Enable/disable loop prevention |
 
 ### Diagnostics
@@ -169,17 +164,15 @@ Or using the PEX:
 | `run_cable_test` | Start TDR cable test on selected ports |
 | `search_mac_table` | Find which port a MAC address is on |
 
-### LAG / Mirroring / Isolation
+### LAG / Mirroring
 
 | Tool | Description |
 |---|---|
 | `get_lag_config` | Link aggregation groups and member ports |
 | `get_port_mirror_config` | Port mirroring setup (source/destination) |
-| `get_port_isolation` | Per-port forwarding restrictions |
 | `create_lag` | Create/modify a link aggregation group |
 | `delete_lag` | Delete a link aggregation group |
 | `set_port_mirror` | Configure port mirroring for traffic analysis |
-| `set_port_isolation` | Restrict which ports can communicate |
 
 ## Development
 

@@ -79,16 +79,6 @@ async def get_device_info() -> dict[str, Any]:
 
 
 @mcp.tool()
-async def get_dashboard() -> dict[str, Any]:
-    """Get live switch overview: uptime and per-port TX/RX rates.
-
-    Rates are in bytes/sec. This is the best tool for a quick health check.
-    """
-    client = _get_client()
-    return _to_dict(await client.get_dashboard())
-
-
-@mcp.tool()
 async def get_ip_settings() -> dict[str, Any]:
     """Get the switch management IP config: DHCP/static mode, IP, subnet mask, gateway."""
     client = _get_client()
@@ -268,17 +258,6 @@ async def get_poe_recovery() -> dict[str, Any]:
     """
     client = _get_client()
     return _to_dict(await client.get_poe_recovery())
-
-
-@mcp.tool()
-async def get_poe_extend() -> dict[str, Any]:
-    """Get PoE extend mode status per port.
-
-    When extend mode is enabled on a port, PoE reach extends to 250 meters
-    but the link speed drops to 10 Mbps.
-    """
-    client = _get_client()
-    return _to_dict(await client.get_poe_extend())
 
 
 @mcp.tool()
@@ -709,17 +688,6 @@ async def get_igmp_snooping() -> dict[str, Any]:
 
 
 @mcp.tool()
-async def get_dhcp_snooping() -> dict[str, Any]:
-    """Get DHCP snooping configuration: global enable state and per-port trust status.
-
-    DHCP snooping blocks rogue DHCP servers by only allowing DHCP offers
-    on trusted ports (typically the uplink to the real DHCP server).
-    """
-    client = _get_client()
-    return _to_dict(await client.get_dhcp_snooping())
-
-
-@mcp.tool()
 async def get_loop_prevention() -> dict[str, bool]:
     """Check whether loop prevention is enabled.
 
@@ -745,40 +713,6 @@ async def set_igmp_snooping(enabled: bool, report_suppression: bool = False) -> 
     except SwitchError as e:
         return _err(e)
     return f"IGMP snooping {'enabled' if enabled else 'disabled'}"
-
-
-@mcp.tool()
-async def set_dhcp_snooping(enabled: bool) -> str:
-    """Enable or disable DHCP snooping globally.
-
-    Args:
-        enabled: True to enable (blocks rogue DHCP servers on untrusted ports).
-    """
-    client = _get_client()
-    try:
-        await client.set_dhcp_snooping_enabled(enabled=enabled)
-    except SwitchError as e:
-        return _err(e)
-    return f"DHCP snooping {'enabled' if enabled else 'disabled'}"
-
-
-@mcp.tool()
-async def set_dhcp_snooping_port(port: int, trusted: bool) -> str:
-    """Mark a port as trusted or untrusted for DHCP snooping.
-
-    Trusted ports allow DHCP server responses (offers/ACKs). Only the
-    uplink to your real DHCP server should be trusted.
-
-    Args:
-        port: Port number (1-16).
-        trusted: True for trusted (allows DHCP server traffic), False for untrusted.
-    """
-    client = _get_client()
-    try:
-        await client.set_dhcp_snooping_port(port, trusted=trusted)
-    except SwitchError as e:
-        return _err(e)
-    return f"Port {port} DHCP snooping: {'trusted' if trusted else 'untrusted'}"
 
 
 @mcp.tool()
@@ -872,17 +806,6 @@ async def get_port_mirror_config() -> dict[str, Any]:
 
 
 @mcp.tool()
-async def get_port_isolation() -> list[dict[str, Any]]:
-    """Get port isolation (private VLAN-like) configuration.
-
-    Port isolation restricts which ports a given port can forward traffic to.
-    Each entry shows a port and the list of ports it is allowed to communicate with.
-    """
-    client = _get_client()
-    return _to_dict(await client.get_port_isolation())
-
-
-@mcp.tool()
 async def create_lag(group_id: int, ports: list[int]) -> str:
     """Create or modify a link aggregation group (LAG / port trunk).
 
@@ -946,22 +869,3 @@ async def set_port_mirror(
         return _err(e)
     state = "enabled" if enabled else "disabled"
     return f"Port mirroring {state}, destination=port {destination_port}"
-
-
-@mcp.tool()
-async def set_port_isolation(port: int, forwarding_ports: list[int]) -> str:
-    """Restrict which ports a given port can forward traffic to.
-
-    Useful for client isolation (e.g. preventing guests from reaching
-    each other while still allowing access to the uplink).
-
-    Args:
-        port: The port to configure (1-16).
-        forwarding_ports: Ports this port is allowed to send traffic to.
-    """
-    client = _get_client()
-    try:
-        await client.set_port_isolation(port, forwarding_ports)
-    except SwitchError as e:
-        return _err(e)
-    return f"Port {port} isolation updated: forwards to {forwarding_ports}"
