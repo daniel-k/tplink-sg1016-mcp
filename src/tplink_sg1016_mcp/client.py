@@ -135,7 +135,7 @@ class SwitchClient:
 
     # --- authentication ---
 
-    async def authenticate(self) -> None:
+    async def authenticate(self, *, _retries: int = 2) -> None:
         """Log in to the switch. Raises AuthenticationError on failure."""
         session = self._ensure_session()
         session.cookie_jar.clear()
@@ -151,6 +151,8 @@ class SwitchClient:
         )
         info = get_variable(page, "logonInfo", VarType.LIST)
         if not info:
+            if _retries > 0:
+                return await self.authenticate(_retries=_retries - 1)
             raise AuthenticationError("No logon response", "no_response")
 
         code = info[0]
