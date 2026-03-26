@@ -1,7 +1,7 @@
 """Data models for the TP-Link SG1016PE switch."""
 
-from dataclasses import dataclass
-from enum import IntEnum
+from dataclasses import dataclass, field
+from enum import IntEnum, StrEnum
 
 
 class PortSpeed(IntEnum):
@@ -91,3 +91,41 @@ class PoeGlobalState:
     power_limit_max: float
     power_consumption: float
     power_remain: float
+
+
+# --- VLAN models ---
+
+
+class VlanPortMembership(StrEnum):
+    TAGGED = "tagged"
+    UNTAGGED = "untagged"
+    NOT_MEMBER = "not_member"
+
+
+@dataclass
+class Vlan:
+    vid: int
+    name: str
+    tagged_ports: list[int] = field(default_factory=list)
+    untagged_ports: list[int] = field(default_factory=list)
+
+
+@dataclass
+class VlanConfig:
+    enabled: bool
+    port_count: int
+    max_vlans: int
+    vlans: list[Vlan] = field(default_factory=list)
+
+
+@dataclass
+class PortPvid:
+    port: int
+    pvid: int
+
+
+@dataclass
+class PvidConfig:
+    enabled: bool
+    port_count: int
+    pvids: list[PortPvid] = field(default_factory=list)

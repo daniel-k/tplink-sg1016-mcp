@@ -14,8 +14,12 @@ from .models import (
     PoePowerStatus,
     PoePriority,
     PortPoeState,
+    PortPvid,
     PortSpeed,
     PortState,
+    PvidConfig,
+    Vlan,
+    VlanConfig,
 )
 from .parsing import VarType, get_variable, get_variables
 
@@ -282,6 +286,66 @@ class SwitchClient:
             power_consumption=cfg.get("system_power_consumption", 0) / 10,
             power_remain=cfg.get("system_power_remain", 0) / 10,
         )
+
+    # --- VLAN queries ---
+
+    @staticmethod
+    def _bitmask_to_ports(mask: int, port_count: int) -> list[int]:
+        """Convert a port bitmask to a list of 1-based port numbers."""
+        return [i + 1 for i in range(port_count) if mask & (1 << i)]
+
+    async def get_vlan_config(self) -> VlanConfig:
+        """Get the 802.1Q VLAN configuration."""
+        page = await self._authed_get("Vlan8021QRpm.htm")
+        data = get_variable(page, "qvlan_ds", VarType.DICT)
+        if not data:
+            return VlanConfig(enabled=False, port_count=0, max_vlans=0)
+
+        enabled = data.get("state", 0) == 1
+        port_count = data.get("portNum", 0)
+        max_vlans = data.get("maxVids", 0)
+        vids = data.get("vids", [])
+        names = data.get("names", [])
+        tag_mbrs = data.get("tagMbrs", [])
+        untag_mbrs = data.get("untagMbrs", [])
+
+        vlans: list[Vlan] = []
+        for i, vid in enumerate(vids):
+            tagged_mask = tag_mbrs[i] if i < len(tag_mbrs) else 0
+            untagged_mask = untag_mbrs[i] if i < len(untag_mbrs) else 0
+            vlans.append(
+                Vlan(
+                    vid=int(vid),
+                    name=names[i] if i < len(names) else "",
+                    tagged_ports=self._bitmask_to_ports(tagged_mask, port_count),
+                    untagged_ports=self._bitmask_to_ports(untagged_mask, port_count),
+                )
+            )
+
+        return VlanConfig(
+            enabled=enabled,
+            port_count=port_count,
+            max_vlans=max_vlans,
+            vlans=vlans,
+        )
+
+    async def get_pvid_config(self) -> PvidConfig:
+        """Get the per-port PVID (default VLAN) settings."""
+        page = await self._authed_get("Vlan8021QPvidRpm.htm")
+        data = get_variable(page, "pvid_ds", VarType.DICT)
+        if not data:
+            return PvidConfig(enabled=False, port_count=0)
+
+        enabled = data.get("state", 0) == 1
+        port_count = data.get("portNum", 0)
+        pvid_list = data.get("pvids", [])
+
+        pvids = [
+            PortPvid(port=i + 1, pvid=int(pvid_list[i]))
+            for i in range(min(port_count, len(pvid_list)))
+        ]
+
+        return PvidConfig(enabled=enabled, port_count=port_count, pvids=pvids)
 
     # --- mutations ---
 

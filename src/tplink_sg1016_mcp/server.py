@@ -85,6 +85,30 @@ async def get_poe_global_state() -> dict[str, Any] | str:
 
 
 @mcp.tool()
+async def get_vlan_config() -> dict[str, Any]:
+    """Get the 802.1Q VLAN configuration.
+
+    Returns whether 802.1Q is enabled, the max VLAN count, and each VLAN
+    with its ID, name, tagged ports, and untagged ports.
+    """
+    client = _get_client()
+    config = await client.get_vlan_config()
+    return _to_dict(config)
+
+
+@mcp.tool()
+async def get_pvid_config() -> dict[str, Any]:
+    """Get the per-port PVID (default VLAN ID) settings.
+
+    Returns whether 802.1Q is enabled and the PVID assigned to each port.
+    Incoming untagged frames on a port are assigned to its PVID.
+    """
+    client = _get_client()
+    config = await client.get_pvid_config()
+    return _to_dict(config)
+
+
+@mcp.tool()
 async def set_port_state(
     port: int,
     enabled: bool,
