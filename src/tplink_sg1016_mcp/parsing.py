@@ -12,7 +12,10 @@ from typing import Any
 import json5
 
 _SCRIPT_RE = re.compile(r"<script>(.*?)</script>", re.DOTALL)
-_VAR_RE = re.compile(r"var\s+(?P<name>[a-zA-Z0-9_]+)\s*=\s*(?P<value>[^;]+);")
+_VAR_RE = re.compile(
+    r"var\s+(?P<name>[a-zA-Z0-9_]+)\s*=\s*(?P<value>[^;\n]+?)\s*;?\s*$",
+    re.MULTILINE,
+)
 _ARRAY_RE = re.compile(r"\s*new\s*Array\s*\((?P<items>[^)]+)\)")
 
 
@@ -38,7 +41,7 @@ def convert_value(raw: str, var_type: VarType) -> Any:
         case VarType.STR:
             return raw.strip("'\"")
         case VarType.INT:
-            return int(raw)
+            return int(raw.strip())
         case VarType.LIST:
             m = _ARRAY_RE.match(raw)
             if not m:
