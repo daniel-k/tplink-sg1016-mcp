@@ -1,5 +1,13 @@
 # tplink-sg1016-mcp
 
+> **WARNING:** This project is in early development. Many tools are based
+> on reverse-engineered API endpoints, **not official documentation**. Not
+> all tools have been thoroughly tested against real hardware. Write
+> operations (port config, PoE, VLANs, QoS, rebooting, IP changes, etc.)
+> can disrupt your network or make the switch unreachable if used
+> incorrectly. **Use at your own risk.** Always verify critical changes
+> through the switch's web UI.
+
 MCP server for TP-Link SG1016PE Easy Smart switches. Exposes switch management
 over the [Model Context Protocol](https://modelcontextprotocol.io/) (stdio
 transport), so you can query and configure the switch from Claude Code or any

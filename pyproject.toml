@@ -3,6 +3,7 @@ name = "tplink-sg1016-mcp"
 version = "0.1.0"
 description = "MCP server for TP-Link SG1016PE Easy Smart switches"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.13"
 dependencies = [
     "aiohttp>=3.13.3",
