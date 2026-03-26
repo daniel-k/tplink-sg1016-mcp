@@ -91,15 +91,93 @@ Or using the PEX:
 
 ## Available tools
 
+### System
+
 | Tool | Description |
 |---|---|
-| `get_device_info` | Device name, MAC, IP, firmware, hardware version |
-| `get_port_states` | All ports: enabled, speed, flow control |
-| `get_poe_port_states` | PoE ports: power, voltage, current, PD class, status |
-| `get_poe_global_state` | Global PoE power budget, consumption, remaining |
+| `get_device_info` | Model name, MAC, IP, firmware, hardware version |
+| `get_dashboard` | Live uptime and per-port TX/RX traffic rates |
+| `get_ip_settings` | Switch management IP config (DHCP/static) |
+| `get_led_status` | Front-panel LED on/off state |
+| `set_device_name` | Change the switch's system name |
+| `set_ip_settings` | Change management IP (DHCP or static) |
+| `set_led` | Turn front-panel LEDs on/off |
+| `reboot_switch` | Reboot the switch (saves config first) |
+
+### Port management
+
+| Tool | Description |
+|---|---|
+| `get_port_states` | All 16 ports: admin state, speed, flow control |
+| `get_port_statistics` | Per-port TX/RX good/bad packet counters |
 | `set_port_state` | Enable/disable a port, set speed and flow control |
-| `set_poe_limit` | Set the global PoE power budget (watts) |
+
+### PoE (Power over Ethernet)
+
+| Tool | Description |
+|---|---|
+| `get_poe_port_states` | Per-port power, voltage, current, PD class, status |
+| `get_poe_global_state` | Switch-wide power budget, consumption, remaining |
+| `get_poe_recovery` | PoE auto-recovery (ping watchdog) config |
+| `get_poe_extend` | PoE extend mode (250m at 10Mbps) per port |
+| `set_poe_global_limit` | Set the global PoE power budget (watts) |
 | `set_poe_port` | Configure per-port PoE: enable, priority, power limit |
+| `repower_poe_port` | Power-cycle a PoE port to reboot connected device |
+
+### 802.1Q VLANs
+
+| Tool | Description |
+|---|---|
+| `get_vlan_config` | All VLANs with tagged/untagged port membership |
+| `get_pvid_config` | Per-port PVID (native VLAN) assignments |
+| `set_vlan_enabled` | Enable/disable 802.1Q VLAN mode |
+| `create_or_update_vlan` | Create or modify a VLAN with port membership |
+| `delete_vlan` | Delete a VLAN |
+| `set_port_pvid` | Set a port's native VLAN for untagged traffic |
+
+### QoS (Quality of Service)
+
+| Tool | Description |
+|---|---|
+| `get_qos_config` | QoS mode and per-port priority queues |
+| `get_bandwidth_limits` | Per-port ingress/egress rate limits |
+| `get_storm_control` | Per-port storm control settings |
+| `set_qos_mode` | Set QoS mode (port-based, 802.1p, DSCP) |
+| `set_port_qos_priority` | Set a port's priority queue |
+| `set_bandwidth_limit` | Set per-port ingress/egress rate limits |
+| `set_storm_control` | Configure per-port storm control |
+
+### Security
+
+| Tool | Description |
+|---|---|
+| `get_igmp_snooping` | IGMP snooping config and multicast groups |
+| `get_dhcp_snooping` | DHCP snooping config and port trust status |
+| `get_loop_prevention` | Loop prevention enabled/disabled |
+| `set_igmp_snooping` | Enable/disable IGMP snooping |
+| `set_dhcp_snooping` | Enable/disable DHCP snooping |
+| `set_dhcp_snooping_port` | Set port as trusted/untrusted for DHCP |
+| `set_loop_prevention` | Enable/disable loop prevention |
+
+### Diagnostics
+
+| Tool | Description |
+|---|---|
+| `get_cable_diagnostics` | Cable test results (status, length) |
+| `run_cable_test` | Start TDR cable test on selected ports |
+| `search_mac_table` | Find which port a MAC address is on |
+
+### LAG / Mirroring / Isolation
+
+| Tool | Description |
+|---|---|
+| `get_lag_config` | Link aggregation groups and member ports |
+| `get_port_mirror_config` | Port mirroring setup (source/destination) |
+| `get_port_isolation` | Per-port forwarding restrictions |
+| `create_lag` | Create/modify a link aggregation group |
+| `delete_lag` | Delete a link aggregation group |
+| `set_port_mirror` | Configure port mirroring for traffic analysis |
+| `set_port_isolation` | Restrict which ports can communicate |
 
 ## Development
 
