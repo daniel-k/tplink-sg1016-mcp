@@ -319,9 +319,9 @@ class SwitchClient:
         led = get_variable(page, "led", VarType.INT)
         return led == 1
 
-    async def get_cable_diagnostics(self) -> list[CableDiagResult]:
-        """Get cable diagnostics results (run run_cable_test first)."""
-        page = await self._authed_get("CableDiagRpm.htm")
+    @staticmethod
+    def _parse_cable_diag(page: str) -> list[CableDiagResult]:
+        """Parse cable diagnostics results from a switch response page."""
         data = get_variables(
             page,
             [
@@ -346,6 +346,7 @@ class SwitchClient:
                 )
             )
         return result
+
 
     async def get_igmp_snooping(self) -> IgmpSnoopingConfig:
         """Get IGMP snooping configuration and multicast group table."""
@@ -833,11 +834,12 @@ class SwitchClient:
 
     # --- Cable diagnostics ---
 
-    async def run_cable_test(self, ports: list[int]) -> None:
-        """Trigger cable diagnostics on the specified ports."""
+    async def run_cable_test(self, ports: list[int]) -> list[CableDiagResult]:
+        """Trigger cable diagnostics on the specified ports and return results."""
         params = [f"chk_{p}={p}" for p in ports]
         params.append("Apply=Apply")
-        await self._authed_get(f"cable_diag_get.cgi?{'&'.join(params)}")
+        page = await self._authed_get(f"cable_diag_get.cgi?{'&'.join(params)}")
+        return self._parse_cable_diag(page)
 
     # --- Loop prevention ---
 

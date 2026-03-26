@@ -19,7 +19,9 @@ _VAR_RE = re.compile(
 _BRACE_VAR_RE = re.compile(
     r"var\s+(?P<name>[a-zA-Z0-9_]+)\s*=\s*\{",
 )
-_ARRAY_RE = re.compile(r"\s*new\s*Array\s*\((?P<items>[^)]+)\)")
+_ARRAY_RE = re.compile(
+    r"\s*(?:new\s*Array\s*\((?P<items_paren>[^)]+)\)|\[(?P<items_bracket>[^\]]+)\])"
+)
 
 
 class VarType(Enum):
@@ -74,7 +76,8 @@ def convert_value(raw: str, var_type: VarType) -> Any:
             m = _ARRAY_RE.match(raw)
             if not m:
                 return []
-            return [item.strip(' ,\r\n\t"') for item in m.group("items").split(",")]
+            items = m.group("items_paren") or m.group("items_bracket") or ""
+            return [item.strip(' ,\r\n\t"') for item in items.split(",")]
         case VarType.DICT:
             return json5.loads(raw) if raw else None
 

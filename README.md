@@ -160,8 +160,7 @@ Or using the PEX:
 
 | Tool | Description |
 |---|---|
-| `get_cable_diagnostics` | Cable test results (status, length) |
-| `run_cable_test` | Start TDR cable test on selected ports |
+| `run_cable_test` | Run TDR cable test on selected ports and return results |
 | `search_mac_table` | Find which port a MAC address is on |
 
 ### LAG / Mirroring

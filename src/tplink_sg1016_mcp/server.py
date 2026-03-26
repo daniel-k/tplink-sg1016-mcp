@@ -735,33 +735,20 @@ async def set_loop_prevention(enabled: bool) -> str:
 # ===================================================================
 
 
-@mcp.tool()
-async def get_cable_diagnostics() -> list[dict[str, Any]]:
-    """Get cable diagnostics results (must call run_cable_test first).
-
-    Per-port: status (NOT_TESTED, NO_CABLE, NORMAL, OPEN, SHORT, OPEN_SHORT,
-    CROSSTALK) and length_m (estimated cable length in meters).
-    """
-    client = _get_client()
-    return _to_dict(await client.get_cable_diagnostics())
-
 
 @mcp.tool()
-async def run_cable_test(ports: list[int]) -> str:
-    """Start cable diagnostics (TDR test) on specified ports.
+async def run_cable_test(ports: list[int]) -> list[dict[str, Any]]:
+    """Start cable diagnostics (TDR test) on specified ports and return results.
 
-    Tests cable quality and estimates length. Results are available via
-    get_cable_diagnostics after the test completes (~2 seconds).
+    Tests cable quality and estimates length. Returns per-port results
+    immediately: status (NOT_TESTED, NO_CABLE, NORMAL, OPEN, SHORT,
+    OPEN_SHORT, CROSSTALK) and length_m (estimated cable length in meters).
 
     Args:
         ports: Port numbers to test (1-16).
     """
     client = _get_client()
-    try:
-        await client.run_cable_test(ports)
-    except SwitchError as e:
-        return _err(e)
-    return f"Cable test started on ports {ports}"
+    return _to_dict(await client.run_cable_test(ports))
 
 
 @mcp.tool()
