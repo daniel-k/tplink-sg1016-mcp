@@ -131,7 +131,9 @@ Or using the PEX:
 | `get_vlan_config` | All VLANs with tagged/untagged port membership |
 | `get_pvid_config` | Per-port PVID (native VLAN) assignments |
 | `set_vlan_enabled` | Enable/disable 802.1Q VLAN mode |
-| `create_or_update_vlan` | Create or modify a VLAN with port membership |
+| `create_vlan` | Create a new VLAN with optional initial port memberships |
+| `add_vlan_members` | Add ports to an existing VLAN (reads current state first) |
+| `remove_vlan_members` | Remove ports from an existing VLAN (reads current state first) |
 | `delete_vlan` | Delete a VLAN |
 | `set_port_pvid` | Set a port's native VLAN for untagged traffic |
 

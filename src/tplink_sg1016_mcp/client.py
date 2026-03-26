@@ -150,7 +150,7 @@ class SwitchClient:
             },
         )
         info = get_variable(page, "logonInfo", VarType.LIST)
-        if info is None:
+        if not info:
             raise AuthenticationError("No logon response", "no_response")
 
         code = info[0]

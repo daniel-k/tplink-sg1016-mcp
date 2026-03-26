@@ -405,25 +405,30 @@ async def set_vlan_enabled(enabled: bool) -> str:
 
 
 @mcp.tool()
-async def create_or_update_vlan(
+async def create_vlan(
     vid: int,
     name: str,
     tagged_ports: list[int] | None = None,
     untagged_ports: list[int] | None = None,
 ) -> str:
-    """Create a new 802.1Q VLAN or update an existing one.
+    """Create a new 802.1Q VLAN with optional initial port memberships.
 
-    Every port must be either tagged, untagged, or not a member.
-    Ports not listed in tagged_ports or untagged_ports become non-members.
-    The name is filtered to alphanumeric characters and truncated to 10 chars.
+    Ports not listed become non-members. Use add_vlan_members / remove_vlan_members
+    to modify port memberships on existing VLANs.
 
     Args:
-        vid: VLAN ID (1-4094).
+        vid: VLAN ID (2-4094). VLAN 1 already exists as the default.
         name: VLAN name (alphanumeric only, max 10 characters).
         tagged_ports: Ports that send/receive frames with an 802.1Q VLAN tag.
         untagged_ports: Ports that send frames without a VLAN tag (access ports).
     """
     client = _get_client()
+    config = await client.get_vlan_config()
+    if any(v.vid == vid for v in config.vlans):
+        return (
+            f"Error: VLAN {vid} already exists."
+            " Use add_vlan_members / remove_vlan_members to modify it."
+        )
     memberships: dict[int, VlanPortMembership] = {}
     for p in tagged_ports or []:
         memberships[p] = VlanPortMembership.TAGGED
@@ -435,7 +440,92 @@ async def create_or_update_vlan(
         await client.create_or_update_vlan(vid, name, memberships)
     except SwitchError as e:
         return _err(e)
-    return f"VLAN {vid} ('{name}') created/updated"
+    return f"VLAN {vid} ('{name}') created"
+
+
+@mcp.tool()
+async def add_vlan_members(
+    vid: int,
+    tagged_ports: list[int] | None = None,
+    untagged_ports: list[int] | None = None,
+) -> str:
+    """Add ports to an existing 802.1Q VLAN.
+
+    Reads the current VLAN state and adds the specified ports without affecting
+    other existing members. A port can be changed from tagged to untagged (or
+    vice versa) by including it in the desired list.
+
+    Args:
+        vid: VLAN ID of the existing VLAN to modify.
+        tagged_ports: Ports to add as tagged members.
+        untagged_ports: Ports to add as untagged (access) members.
+    """
+    client = _get_client()
+    tagged_ports = tagged_ports or []
+    untagged_ports = untagged_ports or []
+    overlap = set(tagged_ports) & set(untagged_ports)
+    if overlap:
+        return f"Error: port(s) {sorted(overlap)} listed in both tagged and untagged"
+    if not tagged_ports and not untagged_ports:
+        return "Error: no ports specified to add"
+    config = await client.get_vlan_config()
+    vlan = next((v for v in config.vlans if v.vid == vid), None)
+    if vlan is None:
+        return f"Error: VLAN {vid} does not exist"
+    memberships: dict[int, VlanPortMembership] = {}
+    for p in vlan.tagged_ports:
+        memberships[p] = VlanPortMembership.TAGGED
+    for p in vlan.untagged_ports:
+        memberships[p] = VlanPortMembership.UNTAGGED
+    for p in tagged_ports:
+        memberships[p] = VlanPortMembership.TAGGED
+    for p in untagged_ports:
+        memberships[p] = VlanPortMembership.UNTAGGED
+    try:
+        await client.create_or_update_vlan(vid, vlan.name, memberships)
+    except SwitchError as e:
+        return _err(e)
+    added = sorted(set(tagged_ports + untagged_ports))
+    return f"Added port(s) {added} to VLAN {vid}"
+
+
+@mcp.tool()
+async def remove_vlan_members(
+    vid: int,
+    ports: list[int],
+) -> str:
+    """Remove ports from an existing 802.1Q VLAN.
+
+    Reads the current VLAN state and removes the specified ports (sets them to
+    non-member) without affecting other existing members.
+
+    Args:
+        vid: VLAN ID of the existing VLAN to modify.
+        ports: Port numbers to remove from the VLAN.
+    """
+    client = _get_client()
+    if not ports:
+        return "Error: no ports specified to remove"
+    config = await client.get_vlan_config()
+    vlan = next((v for v in config.vlans if v.vid == vid), None)
+    if vlan is None:
+        return f"Error: VLAN {vid} does not exist"
+    current_members = set(vlan.tagged_ports + vlan.untagged_ports)
+    not_members = set(ports) - current_members
+    if not_members:
+        return f"Error: port(s) {sorted(not_members)} are not members of VLAN {vid}"
+    memberships: dict[int, VlanPortMembership] = {}
+    for p in vlan.tagged_ports:
+        memberships[p] = VlanPortMembership.TAGGED
+    for p in vlan.untagged_ports:
+        memberships[p] = VlanPortMembership.UNTAGGED
+    for p in ports:
+        memberships[p] = VlanPortMembership.NOT_MEMBER
+    try:
+        await client.create_or_update_vlan(vid, vlan.name, memberships)
+    except SwitchError as e:
+        return _err(e)
+    return f"Removed port(s) {sorted(ports)} from VLAN {vid}"
 
 
 @mcp.tool()
