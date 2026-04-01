@@ -145,6 +145,7 @@ class SwitchClient:
         info = get_variable(page, "logonInfo", VarType.LIST)
         if not info:
             if _retries > 0:
+                await asyncio.sleep(0.5)
                 return await self.authenticate(_retries=_retries - 1)
             raise AuthenticationError("No logon response", "no_response")
 

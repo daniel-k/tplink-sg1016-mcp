@@ -19,8 +19,12 @@ _VAR_RE = re.compile(
 _BRACE_VAR_RE = re.compile(
     r"var\s+(?P<name>[a-zA-Z0-9_]+)\s*=\s*\{",
 )
+_ARRAY_VAR_RE = re.compile(
+    r"var\s+(?P<name>[a-zA-Z0-9_]+)\s*=\s*new\s+Array\s*\(",
+)
 _ARRAY_RE = re.compile(
-    r"\s*(?:new\s*Array\s*\((?P<items_paren>[^)]+)\)|\[(?P<items_bracket>[^\]]+)\])"
+    r"\s*(?:new\s*Array\s*\((?P<items_paren>[^)]+)\)|\[(?P<items_bracket>[^\]]+)\])",
+    re.DOTALL,
 )
 
 
@@ -56,6 +60,14 @@ def extract_variables(page: str) -> dict[str, str]:
             value = _extract_braced_value(script, brace_start)
             if value is not None:
                 result[m.group("name")] = value
+        # Extract multi-line new Array(...) declarations.
+        for m in _ARRAY_VAR_RE.finditer(script):
+            name = m.group("name")
+            if name not in result:
+                paren_start = m.end() - 1  # position of '('
+                paren_end = script.find(")", paren_start)
+                if paren_end != -1:
+                    result[name] = "new Array(" + script[paren_start + 1 : paren_end] + ")"
         # Second pass: single-line variables (strings, ints, arrays).
         # Skip names already captured by the brace pass.
         for var_match in _VAR_RE.finditer(script):
